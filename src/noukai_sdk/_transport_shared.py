@@ -134,7 +134,7 @@ def _safe_json(resp: httpx.Response) -> Any:
     try:
         return resp.json()
     except Exception as exc:
-        _logger.debug('0x000995', "Failed to decode JSON response body: %s", exc)
+        _logger.debug("[0x000995] Failed to decode JSON response body: %s", exc)
         return None
 
 
@@ -142,5 +142,5 @@ def _safe_parse_json(raw: bytes) -> Any:
     try:
         return _json_module.loads(raw)
     except Exception as exc:
-        _logger.debug('0x000994', "Failed to parse JSON bytes: %s", exc)
+        _logger.debug("[0x000994] Failed to parse JSON bytes: %s", exc)
         return None

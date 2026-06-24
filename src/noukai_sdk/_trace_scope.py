@@ -88,16 +88,19 @@ def trace(fn: Callable[..., Any]) -> Callable[..., Any]:
     framework can call `trace_scope(replay_session_id=...)` directly.
     """
     if inspect.iscoroutinefunction(fn):
+
         @functools.wraps(fn)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             async with trace_scope():
                 return await fn(*args, **kwargs)
+
         return async_wrapper
 
     @functools.wraps(fn)
     def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
         with trace_scope_sync():
             return fn(*args, **kwargs)
+
     return sync_wrapper
 
 
@@ -158,6 +161,7 @@ async def trace_scope(
         # Lazy import to avoid circular: fetcher needs Transport types.
         # fetcher.py is implemented in Phase 6; import-not-found is expected until then.
         from .replay.fetcher import fetch_session_async
+
         assert replay_session_id is not None  # guaranteed by mode == REPLAY branch
         scope.fetched_session = await fetch_session_async(
             transport=transport, session_id=replay_session_id
@@ -202,6 +206,7 @@ def trace_scope_sync(
 
     if mode is ScopeMode.REPLAY:
         from .replay.fetcher import fetch_session_sync
+
         assert replay_session_id is not None  # guaranteed by mode == REPLAY branch
         scope.fetched_session = fetch_session_sync(
             transport=transport, session_id=replay_session_id
@@ -245,6 +250,7 @@ def _emit_log(transport: Any, event: dict[str, Any]) -> None:
 def _validate_snapshots_available(scope: ScopeState) -> None:
     """Raise ReplayNoSnapshotsError if any execution has snapshots_available=False."""
     from ._errors import ReplayNoSnapshotsError
+
     assert scope.fetched_session is not None
     for ex in scope.fetched_session.executions:
         if not ex.snapshots_available:
@@ -259,6 +265,7 @@ def _validate_snapshots_available(scope: ScopeState) -> None:
 def _check_leftovers(scope: ScopeState) -> None:
     """Raise ReplayLeftoverError if any executions were not consumed."""
     from ._errors import ReplayLeftoverError
+
     assert scope.fetched_session is not None
     all_ids = {ex.execution_id for ex in scope.fetched_session.executions}
     leftover = all_ids - scope.consumed_execution_ids

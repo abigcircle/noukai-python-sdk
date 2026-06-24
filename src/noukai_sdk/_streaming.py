@@ -151,7 +151,7 @@ def _parse_frame(frame: bytes) -> StreamEvent | None:
     try:
         payload: Any = json.loads(payload_text)
     except json.JSONDecodeError as e:
-        _logger.warning('0x000997', "Skipping malformed SSE frame: %s", e)
+        _logger.warning("[0x000997] Skipping malformed SSE frame: %s", e)
         return None
     if not isinstance(payload, dict):
         return None
@@ -169,7 +169,7 @@ def _parse_frame(frame: bytes) -> StreamEvent | None:
     try:
         validated = model.model_validate(payload)
     except ValidationError as e:
-        _logger.warning('0x000996', "Skipping invalid %s frame: %s", event_type, e)
+        _logger.warning("[0x000996] Skipping invalid %s frame: %s", event_type, e)
         return None
     # mypy can't narrow union return: this is one of the StreamEvent variants
     # by construction of _EVENT_MODELS.

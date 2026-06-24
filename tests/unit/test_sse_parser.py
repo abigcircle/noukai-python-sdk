@@ -203,11 +203,7 @@ class TestEventFieldDiscriminator:
 
     async def test_event_field_alone_resolves_type(self):
         """``event:`` line is sufficient — payload need not carry eventType."""
-        body = (
-            b"event: step_completed\n"
-            b'data: {"stepId": "s-1", "output": {}}\n'
-            b"\n"
-        )
+        body = b'event: step_completed\ndata: {"stepId": "s-1", "output": {}}\n\n'
         events = [e async for e in parse_sse_stream(feed([body]))]
         assert len(events) == 1
         assert isinstance(events[0], StepCompleted)

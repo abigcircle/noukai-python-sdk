@@ -226,9 +226,12 @@ def test_replay_round_trip_returns_recorded_output(client: Noukai, hello_flow: F
     assert captured.session_id == captured_session_id
 
     # --- Replay ---
-    with replay_enabled_env(), trace_scope_sync(
-        replay_session_id=captured_session_id, transport=client._transport
-    ) as scope2:
+    with (
+        replay_enabled_env(),
+        trace_scope_sync(
+            replay_session_id=captured_session_id, transport=client._transport
+        ) as scope2,
+    ):
         replayed = hello_flow.execute(message="replay round-trip seed")
 
     assert scope2.mode.value == "replay"
@@ -240,9 +243,7 @@ def test_replay_round_trip_returns_recorded_output(client: Noukai, hello_flow: F
 
 @pytest.mark.integration
 @requires_replay_backend
-def test_replay_miss_when_call_differs_from_recording(
-    client: Noukai, hello_flow: Flow
-) -> None:
+def test_replay_miss_when_call_differs_from_recording(client: Noukai, hello_flow: Flow) -> None:
     """Capture one call; replay a different shape of call → ReplayMissError.
 
     Specifically: capture a single execute(); then inside the replay scope call
@@ -252,8 +253,9 @@ def test_replay_miss_when_call_differs_from_recording(
         hello_flow.execute(message="first and only recorded call")
         captured_session_id = scope.session_id
 
-    with replay_enabled_env(), trace_scope_sync(
-        replay_session_id=captured_session_id, transport=client._transport
+    with (
+        replay_enabled_env(),
+        trace_scope_sync(replay_session_id=captured_session_id, transport=client._transport),
     ):
         hello_flow.execute(message="first replayed call")  # OK — matches position 0
         with pytest.raises(ReplayError):
@@ -308,9 +310,12 @@ def test_complex_replay_mixed_execute_and_events_across_flows(
     )
 
     # --- Replay phase ---
-    with replay_enabled_env(), trace_scope_sync(
-        replay_session_id=captured_session_id, transport=client._transport
-    ) as replay_scope:
+    with (
+        replay_enabled_env(),
+        trace_scope_sync(
+            replay_session_id=captured_session_id, transport=client._transport
+        ) as replay_scope,
+    ):
         replayed_hello_1 = hello_flow.execute(message="setup call")
         assert isinstance(replayed_hello_1, ExecuteResult)
         replayed_two_step_events = list(two_step_flow.events(message="streaming inner flow"))
@@ -372,17 +377,16 @@ def test_replay_events_reconstructs_canonical_sse_sequence(
         list(two_step_flow.events(message="reconstruction test"))
         captured_session_id = scope.session_id
 
-    with replay_enabled_env(), trace_scope_sync(
-        replay_session_id=captured_session_id, transport=client._transport
+    with (
+        replay_enabled_env(),
+        trace_scope_sync(replay_session_id=captured_session_id, transport=client._transport),
     ):
         replayed = list(two_step_flow.events(message="reconstruction test"))
 
     # Canonical reconstruction contract.
     type_seq = [type(e).__name__ for e in replayed]
     assert type_seq[0] == "RunStarted", f"first event must be RunStarted, got {type_seq[0]}"
-    assert type_seq[-1] == "FlowCompleted", (
-        f"last event must be FlowCompleted, got {type_seq[-1]}"
-    )
+    assert type_seq[-1] == "FlowCompleted", f"last event must be FlowCompleted, got {type_seq[-1]}"
 
     step_completed_count = type_seq.count("StepCompleted")
     assert step_completed_count == 2, (
@@ -410,8 +414,9 @@ def test_replay_leftover_error_when_scope_closes_with_unconsumed_executions(
         captured_session_id = scope.session_id
 
     def _replay_with_too_few_calls() -> None:
-        with replay_enabled_env(), trace_scope_sync(
-            replay_session_id=captured_session_id, transport=client._transport
+        with (
+            replay_enabled_env(),
+            trace_scope_sync(replay_session_id=captured_session_id, transport=client._transport),
         ):
             hello_flow.execute(message="call 1")
             hello_flow.execute(message="call 2")
@@ -441,9 +446,7 @@ def test_replay_miss_on_wrong_flow_slug(
 
     with (
         replay_enabled_env(),
-        trace_scope_sync(
-            replay_session_id=captured_session_id, transport=client._transport
-        ),
+        trace_scope_sync(replay_session_id=captured_session_id, transport=client._transport),
         pytest.raises(ReplayMissError),
     ):
         two_step_flow.execute(message="wrong flow — no recording for this slug")

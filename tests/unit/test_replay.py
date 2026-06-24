@@ -25,7 +25,6 @@ import pytest
 from noukai_sdk import AsyncNoukai, Noukai
 from noukai_sdk._constants import HEADER_REPLAY, HEADER_SESSION_ID
 from noukai_sdk._errors import (
-    ReplayDisabledError,
     ReplayForbiddenError,
     ReplayInvalidSessionError,
     ReplayLeftoverError,
@@ -34,7 +33,6 @@ from noukai_sdk._errors import (
     ReplaySessionExpiredError,
     ReplaySessionNotFoundError,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -115,7 +113,8 @@ def session_execution(
         "completedAt": "2026-06-05T00:00:01Z",
         "traceCaptureMode": "full" if snapshots_available else "off",
         "snapshotsAvailable": snapshots_available,
-        "steps": steps or [
+        "steps": steps
+        or [
             {
                 "stepId": "s-1",
                 "blockId": "b-1",
@@ -204,7 +203,7 @@ class TestCaptureMode:
     @pytest.mark.asyncio
     async def test_3_nested_function_propagates_contextvar(self):
         """Contextvar propagates through deeper async calls."""
-        from noukai_sdk import trace_scope, current_session_id
+        from noukai_sdk import trace_scope
 
         captured: dict[str, str] = {}
 
@@ -231,10 +230,12 @@ class TestCaptureMode:
         captured: list[dict[str, Any]] = []
 
         def handler(request: httpx.Request) -> httpx.Response:
-            captured.append({
-                "path": str(request.url.path),
-                HEADER_SESSION_ID: request.headers.get(HEADER_SESSION_ID, ""),
-            })
+            captured.append(
+                {
+                    "path": str(request.url.path),
+                    HEADER_SESSION_ID: request.headers.get(HEADER_SESSION_ID, ""),
+                }
+            )
             # Minimal SSE-like response stub — Phase 7 supplies a real one.
             return httpx.Response(
                 200,
@@ -242,7 +243,7 @@ class TestCaptureMode:
                 content=(
                     b'event: run_started\ndata: {"runId":"r-1","executionId":"exec-1"}\n\n'
                     b'event: step_completed\ndata: {"stepId":"s-1","output":{"ok":true}}\n\n'
-                    b'event: flow_completed\ndata: {"executionId":"exec-1","result":{"ok":true}}\n\n'
+                    b'event: flow_completed\ndata: {"executionId":"exec-1","result":{"ok":true}}\n\n'  # noqa: E501
                 ),
             )
 
@@ -385,15 +386,16 @@ class TestReplayMode:
             if "/seq/sessions/" in request.url.path:
                 return httpx.Response(
                     200,
-                    json=session_response(
-                        executions=[session_execution(result={"answer": 42})]
-                    ),
+                    json=session_response(executions=[session_execution(result={"answer": 42})]),
                 )
             pytest.fail(f"Unexpected outbound request in replay mode: {request.url.path}")
 
         client = make_client_with_handler(handler)
         with replay_enabled():
-            async with trace_scope(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
+            async with trace_scope(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ):
                 result = await client.flow("acme/spelling/grade-3").execute(message="hi")
         await client.aclose()
         assert result.output == {"answer": 42}
@@ -417,7 +419,10 @@ class TestReplayMode:
 
         client = make_client_with_handler(handler)
         with replay_enabled():
-            async with trace_scope(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
+            async with trace_scope(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ):
                 r1 = await client.flow("acme/spelling/grade-3").execute(message="hi")
                 r2 = await client.flow("acme/spelling/grade-3").execute(message="hi")
         await client.aclose()
@@ -442,7 +447,10 @@ class TestReplayMode:
 
         client = make_client_with_handler(handler)
         with replay_enabled():
-            async with trace_scope(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
+            async with trace_scope(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ):
                 a1 = await client.flow("org/proj/A").execute(message="hi")
                 b1 = await client.flow("org/proj/B").execute(message="hi")
                 a2 = await client.flow("org/proj/A").execute(message="hi")
@@ -466,16 +474,26 @@ class TestReplayMode:
                 slug="grade-3",
                 steps=[
                     {
-                        "stepId": "s-1", "blockId": "b-1", "attempt": 1,
-                        "inputSnapshot": {}, "outputSnapshot": {"step": 1},
-                        "errorSnapshot": None, "truncated": False,
-                        "startedAt": "t", "completedAt": "t",
+                        "stepId": "s-1",
+                        "blockId": "b-1",
+                        "attempt": 1,
+                        "inputSnapshot": {},
+                        "outputSnapshot": {"step": 1},
+                        "errorSnapshot": None,
+                        "truncated": False,
+                        "startedAt": "t",
+                        "completedAt": "t",
                     },
                     {
-                        "stepId": "s-2", "blockId": "b-2", "attempt": 1,
-                        "inputSnapshot": {}, "outputSnapshot": {"step": 2},
-                        "errorSnapshot": None, "truncated": False,
-                        "startedAt": "t", "completedAt": "t",
+                        "stepId": "s-2",
+                        "blockId": "b-2",
+                        "attempt": 1,
+                        "inputSnapshot": {},
+                        "outputSnapshot": {"step": 2},
+                        "errorSnapshot": None,
+                        "truncated": False,
+                        "startedAt": "t",
+                        "completedAt": "t",
                     },
                 ],
             ),
@@ -488,7 +506,10 @@ class TestReplayMode:
 
         client = make_client_with_handler(handler)
         with replay_enabled():
-            async with trace_scope(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
+            async with trace_scope(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ):
                 flow = client.flow("org/proj/grade-3")
                 steps_seen = []
                 async for evt in flow.events(message="hi"):
@@ -496,8 +517,7 @@ class TestReplayMode:
         await client.aclose()
         # Verify SDK reconstructed step_completed events from snapshots.
         step_outputs = [
-            e.output for e in steps_seen
-            if getattr(e, "event_type", None) == "step_completed"
+            e.output for e in steps_seen if getattr(e, "event_type", None) == "step_completed"
         ]
         assert step_outputs == [{"step": 1}, {"step": 2}]
 
@@ -505,23 +525,46 @@ class TestReplayMode:
     async def test_13_parallel_step_flows_to_same_slug(self):
         """Two parallel step-through flows to slug A: first-call slug-positional
         per flow, then exact match per recorded execution_id."""
-        from noukai_sdk import trace_scope
         import asyncio
+
+        from noukai_sdk import trace_scope
 
         execs = [
             session_execution(
-                execution_id="rec-A1", trigger_type="step", slug="A",
-                steps=[{"stepId": "s-1", "blockId": "b", "attempt": 1,
-                        "inputSnapshot": {}, "outputSnapshot": {"flow": "A1"},
-                        "errorSnapshot": None, "truncated": False,
-                        "startedAt": "t", "completedAt": "t"}],
+                execution_id="rec-A1",
+                trigger_type="step",
+                slug="A",
+                steps=[
+                    {
+                        "stepId": "s-1",
+                        "blockId": "b",
+                        "attempt": 1,
+                        "inputSnapshot": {},
+                        "outputSnapshot": {"flow": "A1"},
+                        "errorSnapshot": None,
+                        "truncated": False,
+                        "startedAt": "t",
+                        "completedAt": "t",
+                    }
+                ],
             ),
             session_execution(
-                execution_id="rec-A2", trigger_type="step", slug="A",
-                steps=[{"stepId": "s-1", "blockId": "b", "attempt": 1,
-                        "inputSnapshot": {}, "outputSnapshot": {"flow": "A2"},
-                        "errorSnapshot": None, "truncated": False,
-                        "startedAt": "t", "completedAt": "t"}],
+                execution_id="rec-A2",
+                trigger_type="step",
+                slug="A",
+                steps=[
+                    {
+                        "stepId": "s-1",
+                        "blockId": "b",
+                        "attempt": 1,
+                        "inputSnapshot": {},
+                        "outputSnapshot": {"flow": "A2"},
+                        "errorSnapshot": None,
+                        "truncated": False,
+                        "startedAt": "t",
+                        "completedAt": "t",
+                    }
+                ],
             ),
         ]
 
@@ -540,7 +583,10 @@ class TestReplayMode:
             return results
 
         with replay_enabled():
-            async with trace_scope(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
+            async with trace_scope(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ):
                 r1, r2 = await asyncio.gather(consume("1"), consume("2"))
         await client.aclose()
         # Order within asyncio.gather is preserved: r1 → first slug A, r2 → second.
@@ -551,11 +597,13 @@ class TestReplayMode:
         """A recorded error_snapshot triggers a re-raise of the same error type."""
         from noukai_sdk import FlowExecutionError, trace_scope
 
-        execs = [session_execution(
-            execution_id="r-1",
-            result=None,
-            error={"code": "FLOW_EXECUTION_ERROR", "message": "boom"},
-        )]
+        execs = [
+            session_execution(
+                execution_id="r-1",
+                result=None,
+                error={"code": "FLOW_EXECUTION_ERROR", "message": "boom"},
+            )
+        ]
 
         def handler(request: httpx.Request) -> httpx.Response:
             if "/seq/sessions/" in request.url.path:
@@ -564,7 +612,10 @@ class TestReplayMode:
 
         client = make_client_with_handler(handler)
         with replay_enabled():
-            async with trace_scope(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
+            async with trace_scope(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ):
                 with pytest.raises(FlowExecutionError, match="boom"):
                     await client.flow("acme/spelling/grade-3").execute(message="hi")
         await client.aclose()
@@ -602,21 +653,23 @@ class TestReplayMode:
 
         client = make_client_with_handler(handler)
         miss_message = ""
-        with replay_enabled():
-            # The matcher raises ReplayMissError on the user-code call. The
-            # scope's exit then sees an unconsumed execution and would raise
-            # ReplayLeftoverError. We capture the ReplayMissError message
-            # outside the scope by inspecting the chained exception.
-            with pytest.raises((ReplayMissError, ReplayLeftoverError)) as exc_info:
-                async with trace_scope(
-                    replay_session_id="11111111-1111-4111-8111-111111111111",
-                    transport=client._transport,
-                ):
-                    try:
-                        await client.flow("acme/spelling/grade-3").execute(message="hi")
-                    except ReplayMissError as miss:
-                        miss_message = str(miss)
-                        raise
+        # The matcher raises ReplayMissError on the user-code call. The scope's
+        # exit then sees an unconsumed execution and would raise
+        # ReplayLeftoverError. We capture the ReplayMissError message outside
+        # the scope by inspecting the chained exception.
+        with (  # noqa: PT012 — block needs the try/except to capture the chained miss
+            replay_enabled(),
+            pytest.raises((ReplayMissError, ReplayLeftoverError)) as exc_info,
+        ):
+            async with trace_scope(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ):
+                try:
+                    await client.flow("acme/spelling/grade-3").execute(message="hi")
+                except ReplayMissError as miss:
+                    miss_message = str(miss)
+                    raise
         await client.aclose()
         # The matcher raised ReplayMissError with the deleted-flow hint (we
         # captured it before scope-exit replaced it with ReplayLeftoverError).
@@ -645,7 +698,10 @@ class TestReplayMode:
 
         client = make_client_with_handler(handler)
         with replay_enabled():
-            async with trace_scope(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
+            async with trace_scope(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ):
                 # Client-facing slug is org/project/slug; matcher uses bare 'grade-3'.
                 result = await client.flow("acme/spelling/grade-3").execute(message="hi")
         await client.aclose()
@@ -664,7 +720,10 @@ class TestReplayMode:
 
         client = make_client_with_handler(handler)
         with replay_enabled():
-            async with trace_scope(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
+            async with trace_scope(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ):
                 await client.flow("acme/spelling/grade-3").execute(message="hi")
                 with pytest.raises(ReplayMissError):
                     await client.flow("acme/spelling/grade-3").execute(message="hi2")
@@ -685,11 +744,13 @@ class TestReplayMode:
             pytest.fail(f"Unexpected: {request.url.path}")
 
         client = make_client_with_handler(handler)
-        with replay_enabled():
-            with pytest.raises(ReplayLeftoverError):
-                async with trace_scope(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
-                    await client.flow("acme/spelling/grade-3").execute(message="hi")
-                    # Only consumed 1 of 2 — should raise on scope exit.
+        with replay_enabled(), pytest.raises(ReplayLeftoverError):
+            async with trace_scope(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ):
+                await client.flow("acme/spelling/grade-3").execute(message="hi")
+                # Only consumed 1 of 2 — should raise on scope exit.
         await client.aclose()
 
     @pytest.mark.asyncio
@@ -714,10 +775,14 @@ class TestReplayMode:
 
         client = make_client_with_handler(handler)
         with replay_enabled():
-            async with trace_scope(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
+            async with trace_scope(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ):
                 first = await client.flow("acme/spelling/grade-3").execute(message="hi")
                 explicit = await client.flow("acme/spelling/grade-3").execute(
-                    message="hi", session_id="22222222-2222-4222-8222-222222222222",
+                    message="hi",
+                    session_id="22222222-2222-4222-8222-222222222222",
                 )
         await client.aclose()
         assert first.output == {"x": 0}
@@ -749,11 +814,14 @@ class TestProductionSafety:
 
         client = make_client_with_handler(handler)
         with replay_disabled():
-            async with trace_scope(replay_session_id="11111111-1111-4111-8111-111111111111") as scope:
+            async with trace_scope(
+                replay_session_id="11111111-1111-4111-8111-111111111111"
+            ) as scope:
                 await client.flow("acme/spelling/grade-3").execute(message="hi")
         await client.aclose()
         assert captured["path"].endswith("/execute"), "Should have made the real call"
-        # The header carries the freshly-generated capture session_id, not "11111111-1111-4111-8111-111111111111".
+        # The header carries the freshly-generated capture session_id,
+        # not "11111111-1111-4111-8111-111111111111".
         assert captured["session_id_header"] == scope.session_id
         assert captured["session_id_header"] != "11111111-1111-4111-8111-111111111111"
 
@@ -767,10 +835,12 @@ class TestProductionSafety:
             pytest.fail(f"Unexpected: {request.url.path}")
 
         client = make_client_with_handler(handler)
-        with replay_enabled():
-            with pytest.raises(ReplayForbiddenError):
-                async with trace_scope(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
-                    pass
+        with replay_enabled(), pytest.raises(ReplayForbiddenError):
+            async with trace_scope(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ):
+                pass
         await client.aclose()
 
     @pytest.mark.asyncio
@@ -783,14 +853,17 @@ class TestProductionSafety:
             pytest.fail(f"Unexpected: {request.url.path}")
 
         client = make_client_with_handler(handler)
-        with replay_enabled():
-            with pytest.raises(ReplaySessionExpiredError):
-                async with trace_scope(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
-                    pass
+        with replay_enabled(), pytest.raises(ReplaySessionExpiredError):
+            async with trace_scope(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ):
+                pass
         await client.aclose()
 
 
 # Additional production-safety tests for sibling errors
+
 
 class TestProductionSafetyExtras:
     @pytest.mark.asyncio
@@ -801,10 +874,12 @@ class TestProductionSafetyExtras:
             return httpx.Response(404, json={"detail": {"code": "NOT_FOUND", "message": "no"}})
 
         client = make_client_with_handler(handler)
-        with replay_enabled():
-            with pytest.raises(ReplaySessionNotFoundError):
-                async with trace_scope(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
-                    pass
+        with replay_enabled(), pytest.raises(ReplaySessionNotFoundError):
+            async with trace_scope(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ):
+                pass
         await client.aclose()
 
     @pytest.mark.asyncio
@@ -815,10 +890,12 @@ class TestProductionSafetyExtras:
             return httpx.Response(400, json={"detail": {"code": "BAD_REQUEST", "message": "no"}})
 
         client = make_client_with_handler(handler)
-        with replay_enabled():
-            with pytest.raises(ReplayInvalidSessionError):
-                async with trace_scope(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
-                    pass
+        with replay_enabled(), pytest.raises(ReplayInvalidSessionError):
+            async with trace_scope(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ):
+                pass
         await client.aclose()
 
     @pytest.mark.asyncio
@@ -828,16 +905,16 @@ class TestProductionSafetyExtras:
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(
                 200,
-                json=session_response(executions=[
-                    session_execution(snapshots_available=False)
-                ]),
+                json=session_response(executions=[session_execution(snapshots_available=False)]),
             )
 
         client = make_client_with_handler(handler)
-        with replay_enabled():
-            with pytest.raises(ReplayNoSnapshotsError):
-                async with trace_scope(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
-                    pass
+        with replay_enabled(), pytest.raises(ReplayNoSnapshotsError):
+            async with trace_scope(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ):
+                pass
         await client.aclose()
 
 
@@ -852,9 +929,10 @@ class TestEdgeCases:
         """Per design, concurrent same-slug execute() is undefined behavior.
         We assert detection: a warning is emitted; result correctness is not
         asserted."""
-        from noukai_sdk import trace_scope
         import asyncio
         import warnings
+
+        from noukai_sdk import trace_scope
 
         execs = [
             session_execution(execution_id="A1", slug="A", result={"x": "A1"}),
@@ -865,21 +943,23 @@ class TestEdgeCases:
             return httpx.Response(200, json=session_response(executions=execs))
 
         client = make_client_with_handler(handler)
-        with replay_enabled():
-            with warnings.catch_warnings(record=True) as caught:
-                warnings.simplefilter("always")
-                async with trace_scope(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
-                    await asyncio.gather(
-                        client.flow("a/b/A").execute(message="1"),
-                        client.flow("a/b/A").execute(message="2"),
-                    )
-                # Either warning is emitted, or implementation chose to skip.
-                # Required: detection mechanism exists. Acceptable: warning OR
-                # docs note. We test for at least one warning of any kind.
-                # If implementation chose silence, this test should be updated
-                # to xfail with a clear note.
-                replay_warnings = [w for w in caught if "concurrent" in str(w.message).lower()]
-                assert len(replay_warnings) >= 1
+        with replay_enabled(), warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            async with trace_scope(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ):
+                await asyncio.gather(
+                    client.flow("a/b/A").execute(message="1"),
+                    client.flow("a/b/A").execute(message="2"),
+                )
+            # Either warning is emitted, or implementation chose to skip.
+            # Required: detection mechanism exists. Acceptable: warning OR
+            # docs note. We test for at least one warning of any kind.
+            # If implementation chose silence, this test should be updated
+            # to xfail with a clear note.
+            replay_warnings = [w for w in caught if "concurrent" in str(w.message).lower()]
+            assert len(replay_warnings) >= 1
         await client.aclose()
 
     @pytest.mark.asyncio

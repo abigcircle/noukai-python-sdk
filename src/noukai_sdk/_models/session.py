@@ -79,9 +79,9 @@ class SessionExecution(BaseModel):
     started_at: str | None = Field(default=None, alias="startedAt")
     completed_at: str | None = Field(default=None, alias="completedAt")
     # None when no steps were recorded so the BE cannot derive a canonical mode.
-    trace_capture_mode: (
-        Literal["full", "redacted", "metadata_only", "off"] | str | None
-    ) = Field(default=None, alias="traceCaptureMode")
+    trace_capture_mode: Literal["full", "redacted", "metadata_only", "off"] | str | None = Field(
+        default=None, alias="traceCaptureMode"
+    )
     # True iff SDK can replay (i.e. capture mode was "full" or "redacted").
     snapshots_available: bool = Field(alias="snapshotsAvailable")
     steps: list[SessionStepSnapshot] = Field(default_factory=list)

@@ -34,9 +34,10 @@ def test_invalid_api_key_raises_auth_error() -> None:
     org, project = (integration_project.split("/", 1) + ["test"])[:2]
     hello_slug = os.environ.get("NOUKAI_INTEGRATION_HELLO_SLUG", "hello-world")
 
-    with Noukai(api_key=bad_key, org=org, project=project) as bad_client, pytest.raises(
-        AuthenticationError
-    ) as exc_info:
+    with (
+        Noukai(api_key=bad_key, org=org, project=project) as bad_client,
+        pytest.raises(AuthenticationError) as exc_info,
+    ):
         bad_client.flow(hello_slug).execute(message="auth error test")
 
     err = exc_info.value
@@ -96,9 +97,10 @@ def test_zero_credits_raises_insufficient_credits() -> None:
         )
 
     org, project = zero_credit_project.split("/", 1)
-    with Noukai(api_key=zero_credit_key, org=org, project=project) as zero_client, pytest.raises(
-        InsufficientCreditsError
-    ) as exc_info:
+    with (
+        Noukai(api_key=zero_credit_key, org=org, project=project) as zero_client,
+        pytest.raises(InsufficientCreditsError) as exc_info,
+    ):
         zero_client.flow(zero_credit_slug).execute(message="credits test")
 
     err = exc_info.value

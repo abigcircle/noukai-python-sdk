@@ -24,7 +24,6 @@ import pytest
 from noukai_sdk import Noukai
 from noukai_sdk._constants import HEADER_REPLAY, HEADER_SESSION_ID
 from noukai_sdk._errors import (
-    ReplayDisabledError,
     ReplayForbiddenError,
     ReplayInvalidSessionError,
     ReplayLeftoverError,
@@ -33,7 +32,6 @@ from noukai_sdk._errors import (
     ReplaySessionExpiredError,
     ReplaySessionNotFoundError,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers (mirrors of test_replay.py helpers)
@@ -96,7 +94,8 @@ def session_execution(
         "completedAt": "2026-06-05T00:00:01Z",
         "traceCaptureMode": "full" if snapshots_available else "off",
         "snapshotsAvailable": snapshots_available,
-        "steps": steps or [
+        "steps": steps
+        or [
             {
                 "stepId": "s-1",
                 "blockId": "b-1",
@@ -182,7 +181,7 @@ class TestCaptureModeSync:
 
     def test_3_nested_function_propagates_contextvar(self):
         """Contextvar propagates through deeper sync calls (thread-local via contextvars)."""
-        from noukai_sdk import trace_scope_sync, current_session_id
+        from noukai_sdk import trace_scope_sync
 
         captured: dict[str, str] = {}
 
@@ -207,17 +206,19 @@ class TestCaptureModeSync:
         captured: list[dict[str, Any]] = []
 
         def handler(request: httpx.Request) -> httpx.Response:
-            captured.append({
-                "path": str(request.url.path),
-                HEADER_SESSION_ID: request.headers.get(HEADER_SESSION_ID, ""),
-            })
+            captured.append(
+                {
+                    "path": str(request.url.path),
+                    HEADER_SESSION_ID: request.headers.get(HEADER_SESSION_ID, ""),
+                }
+            )
             return httpx.Response(
                 200,
                 headers={"content-type": "text/event-stream"},
                 content=(
                     b'event: run_started\ndata: {"runId":"r-1","executionId":"exec-1"}\n\n'
                     b'event: step_completed\ndata: {"stepId":"s-1","output":{"ok":true}}\n\n'
-                    b'event: flow_completed\ndata: {"executionId":"exec-1","result":{"ok":true}}\n\n'
+                    b'event: flow_completed\ndata: {"executionId":"exec-1","result":{"ok":true}}\n\n'  # noqa: E501
                 ),
             )
 
@@ -308,16 +309,19 @@ class TestReplayModeSync:
             if "/seq/sessions/" in request.url.path:
                 return httpx.Response(
                     200,
-                    json=session_response(
-                        executions=[session_execution(result={"answer": 42})]
-                    ),
+                    json=session_response(executions=[session_execution(result={"answer": 42})]),
                 )
             pytest.fail(f"Unexpected outbound request in replay mode: {request.url.path}")
 
         client = make_sync_client_with_handler(handler)
-        with replay_enabled():
-            with trace_scope_sync(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
-                result = client.flow("acme/spelling/grade-3").execute(message="hi")
+        with (
+            replay_enabled(),
+            trace_scope_sync(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ),
+        ):
+            result = client.flow("acme/spelling/grade-3").execute(message="hi")
         client.close()
         assert result.output == {"answer": 42}
         assert all("/seq/sessions/" in p for p in outbound_paths)
@@ -337,10 +341,15 @@ class TestReplayModeSync:
             pytest.fail(f"Unexpected: {request.url.path}")
 
         client = make_sync_client_with_handler(handler)
-        with replay_enabled():
-            with trace_scope_sync(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
-                r1 = client.flow("acme/spelling/grade-3").execute(message="hi")
-                r2 = client.flow("acme/spelling/grade-3").execute(message="hi")
+        with (
+            replay_enabled(),
+            trace_scope_sync(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ),
+        ):
+            r1 = client.flow("acme/spelling/grade-3").execute(message="hi")
+            r2 = client.flow("acme/spelling/grade-3").execute(message="hi")
         client.close()
         assert r1.output == {"n": 1}
         assert r2.output == {"n": 2}
@@ -361,11 +370,16 @@ class TestReplayModeSync:
             pytest.fail(f"Unexpected: {request.url.path}")
 
         client = make_sync_client_with_handler(handler)
-        with replay_enabled():
-            with trace_scope_sync(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
-                a1 = client.flow("org/proj/A").execute(message="hi")
-                b1 = client.flow("org/proj/B").execute(message="hi")
-                a2 = client.flow("org/proj/A").execute(message="hi")
+        with (
+            replay_enabled(),
+            trace_scope_sync(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ),
+        ):
+            a1 = client.flow("org/proj/A").execute(message="hi")
+            b1 = client.flow("org/proj/B").execute(message="hi")
+            a2 = client.flow("org/proj/A").execute(message="hi")
         client.close()
         assert a1.output == {"x": "A1"}
         assert b1.output == {"x": "B1"}
@@ -384,16 +398,26 @@ class TestReplayModeSync:
                 slug="grade-3",
                 steps=[
                     {
-                        "stepId": "s-1", "blockId": "b-1", "attempt": 1,
-                        "inputSnapshot": {}, "outputSnapshot": {"step": 1},
-                        "errorSnapshot": None, "truncated": False,
-                        "startedAt": "t", "completedAt": "t",
+                        "stepId": "s-1",
+                        "blockId": "b-1",
+                        "attempt": 1,
+                        "inputSnapshot": {},
+                        "outputSnapshot": {"step": 1},
+                        "errorSnapshot": None,
+                        "truncated": False,
+                        "startedAt": "t",
+                        "completedAt": "t",
                     },
                     {
-                        "stepId": "s-2", "blockId": "b-2", "attempt": 1,
-                        "inputSnapshot": {}, "outputSnapshot": {"step": 2},
-                        "errorSnapshot": None, "truncated": False,
-                        "startedAt": "t", "completedAt": "t",
+                        "stepId": "s-2",
+                        "blockId": "b-2",
+                        "attempt": 1,
+                        "inputSnapshot": {},
+                        "outputSnapshot": {"step": 2},
+                        "errorSnapshot": None,
+                        "truncated": False,
+                        "startedAt": "t",
+                        "completedAt": "t",
                     },
                 ],
             ),
@@ -405,16 +429,20 @@ class TestReplayModeSync:
             pytest.fail(f"Unexpected outbound: {request.url.path}")
 
         client = make_sync_client_with_handler(handler)
-        with replay_enabled():
-            with trace_scope_sync(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
-                flow = client.flow("org/proj/grade-3")
-                steps_seen = []
-                for evt in flow.events(message="hi"):
-                    steps_seen.append(evt)
+        with (
+            replay_enabled(),
+            trace_scope_sync(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ),
+        ):
+            flow = client.flow("org/proj/grade-3")
+            steps_seen = []
+            for evt in flow.events(message="hi"):
+                steps_seen.append(evt)
         client.close()
         step_outputs = [
-            e.output for e in steps_seen
-            if getattr(e, "event_type", None) == "step_completed"
+            e.output for e in steps_seen if getattr(e, "event_type", None) == "step_completed"
         ]
         assert step_outputs == [{"step": 1}, {"step": 2}]
 
@@ -430,11 +458,13 @@ class TestReplayModeSync:
         """A recorded error_snapshot triggers a re-raise of the same error type."""
         from noukai_sdk import FlowExecutionError, trace_scope_sync
 
-        execs = [session_execution(
-            execution_id="r-1",
-            result=None,
-            error={"code": "FLOW_EXECUTION_ERROR", "message": "boom"},
-        )]
+        execs = [
+            session_execution(
+                execution_id="r-1",
+                result=None,
+                error={"code": "FLOW_EXECUTION_ERROR", "message": "boom"},
+            )
+        ]
 
         def handler(request: httpx.Request) -> httpx.Response:
             if "/seq/sessions/" in request.url.path:
@@ -442,10 +472,15 @@ class TestReplayModeSync:
             pytest.fail(f"Unexpected: {request.url.path}")
 
         client = make_sync_client_with_handler(handler)
-        with replay_enabled():
-            with trace_scope_sync(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
-                with pytest.raises(FlowExecutionError, match="boom"):
-                    client.flow("acme/spelling/grade-3").execute(message="hi")
+        with (
+            replay_enabled(),
+            trace_scope_sync(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ),
+            pytest.raises(FlowExecutionError, match="boom"),
+        ):
+            client.flow("acme/spelling/grade-3").execute(message="hi")
         client.close()
 
     def test_15_extra_code_call_raises_replay_miss(self):
@@ -459,11 +494,16 @@ class TestReplayModeSync:
             pytest.fail(f"Unexpected: {request.url.path}")
 
         client = make_sync_client_with_handler(handler)
-        with replay_enabled():
-            with trace_scope_sync(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
-                client.flow("acme/spelling/grade-3").execute(message="hi")
-                with pytest.raises(ReplayMissError):
-                    client.flow("acme/spelling/grade-3").execute(message="hi2")
+        with (
+            replay_enabled(),
+            trace_scope_sync(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ),
+        ):
+            client.flow("acme/spelling/grade-3").execute(message="hi")
+            with pytest.raises(ReplayMissError):
+                client.flow("acme/spelling/grade-3").execute(message="hi2")
         client.close()
 
     def test_16_unconsumed_executions_raise_leftover(self):
@@ -480,11 +520,16 @@ class TestReplayModeSync:
             pytest.fail(f"Unexpected: {request.url.path}")
 
         client = make_sync_client_with_handler(handler)
-        with replay_enabled():
-            with pytest.raises(ReplayLeftoverError):
-                with trace_scope_sync(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
-                    client.flow("acme/spelling/grade-3").execute(message="hi")
-                    # Only consumed 1 of 2 — should raise on scope exit.
+        with (
+            replay_enabled(),
+            pytest.raises(ReplayLeftoverError),
+            trace_scope_sync(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ),
+        ):
+            client.flow("acme/spelling/grade-3").execute(message="hi")
+            # Only consumed 1 of 2 — should raise on scope exit.
         client.close()
 
     def test_17_explicit_session_id_kwarg_in_replay(self):
@@ -506,12 +551,18 @@ class TestReplayModeSync:
             pytest.fail(f"Unexpected: {request.url.path}")
 
         client = make_sync_client_with_handler(handler)
-        with replay_enabled():
-            with trace_scope_sync(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
-                first = client.flow("acme/spelling/grade-3").execute(message="hi")
-                explicit = client.flow("acme/spelling/grade-3").execute(
-                    message="hi", session_id="22222222-2222-4222-8222-222222222222",
-                )
+        with (
+            replay_enabled(),
+            trace_scope_sync(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ),
+        ):
+            first = client.flow("acme/spelling/grade-3").execute(message="hi")
+            explicit = client.flow("acme/spelling/grade-3").execute(
+                message="hi",
+                session_id="22222222-2222-4222-8222-222222222222",
+            )
         client.close()
         assert first.output == {"x": 0}
         assert explicit.output == {"x": 99}
@@ -535,9 +586,11 @@ class TestProductionSafetySync:
             return ok_execute_response()
 
         client = make_sync_client_with_handler(handler)
-        with replay_disabled():
-            with trace_scope_sync(replay_session_id="11111111-1111-4111-8111-111111111111") as scope:
-                client.flow("acme/spelling/grade-3").execute(message="hi")
+        with (
+            replay_disabled(),
+            trace_scope_sync(replay_session_id="11111111-1111-4111-8111-111111111111") as scope,
+        ):
+            client.flow("acme/spelling/grade-3").execute(message="hi")
         client.close()
         assert captured["path"].endswith("/execute"), "Should have made the real call"
         assert captured["session_id_header"] == scope.session_id
@@ -552,10 +605,15 @@ class TestProductionSafetySync:
             pytest.fail(f"Unexpected: {request.url.path}")
 
         client = make_sync_client_with_handler(handler)
-        with replay_enabled():
-            with pytest.raises(ReplayForbiddenError):
-                with trace_scope_sync(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
-                    pass
+        with (
+            replay_enabled(),
+            pytest.raises(ReplayForbiddenError),
+            trace_scope_sync(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ),
+        ):
+            pass
         client.close()
 
     def test_20_410_maps_to_replay_session_expired_error(self):
@@ -567,10 +625,15 @@ class TestProductionSafetySync:
             pytest.fail(f"Unexpected: {request.url.path}")
 
         client = make_sync_client_with_handler(handler)
-        with replay_enabled():
-            with pytest.raises(ReplaySessionExpiredError):
-                with trace_scope_sync(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
-                    pass
+        with (
+            replay_enabled(),
+            pytest.raises(ReplaySessionExpiredError),
+            trace_scope_sync(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ),
+        ):
+            pass
         client.close()
 
 
@@ -582,10 +645,15 @@ class TestProductionSafetyExtrasSync:
             return httpx.Response(404, json={"detail": {"code": "NOT_FOUND", "message": "no"}})
 
         client = make_sync_client_with_handler(handler)
-        with replay_enabled():
-            with pytest.raises(ReplaySessionNotFoundError):
-                with trace_scope_sync(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
-                    pass
+        with (
+            replay_enabled(),
+            pytest.raises(ReplaySessionNotFoundError),
+            trace_scope_sync(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ),
+        ):
+            pass
         client.close()
 
     def test_400_maps_to_invalid_session(self):
@@ -595,10 +663,15 @@ class TestProductionSafetyExtrasSync:
             return httpx.Response(400, json={"detail": {"code": "BAD_REQUEST", "message": "no"}})
 
         client = make_sync_client_with_handler(handler)
-        with replay_enabled():
-            with pytest.raises(ReplayInvalidSessionError):
-                with trace_scope_sync(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
-                    pass
+        with (
+            replay_enabled(),
+            pytest.raises(ReplayInvalidSessionError),
+            trace_scope_sync(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ),
+        ):
+            pass
         client.close()
 
     def test_snapshots_available_false_raises(self):
@@ -607,16 +680,19 @@ class TestProductionSafetyExtrasSync:
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(
                 200,
-                json=session_response(executions=[
-                    session_execution(snapshots_available=False)
-                ]),
+                json=session_response(executions=[session_execution(snapshots_available=False)]),
             )
 
         client = make_sync_client_with_handler(handler)
-        with replay_enabled():
-            with pytest.raises(ReplayNoSnapshotsError):
-                with trace_scope_sync(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
-                    pass
+        with (
+            replay_enabled(),
+            pytest.raises(ReplayNoSnapshotsError),
+            trace_scope_sync(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ),
+        ):
+            pass
         client.close()
 
 
@@ -666,33 +742,35 @@ class TestEdgeCasesSync:
         results: list[Any] = []
         thread_errors: list[Exception] = []
 
-        with replay_enabled():
-            with warnings.catch_warnings(record=True) as caught:
-                warnings.simplefilter("always")
-                with trace_scope_sync(replay_session_id="11111111-1111-4111-8111-111111111111", transport=client._transport):
-                    ctx1 = copy_context()
-                    ctx2 = copy_context()
+        with replay_enabled(), warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            with trace_scope_sync(
+                replay_session_id="11111111-1111-4111-8111-111111111111",
+                transport=client._transport,
+            ):
+                ctx1 = copy_context()
+                ctx2 = copy_context()
 
-                    def run_flow_1() -> None:
-                        try:
-                            results.append(ctx1.run(client.flow("a/b/A").execute, message="1"))
-                        except Exception as e:
-                            thread_errors.append(e)
+                def run_flow_1() -> None:
+                    try:
+                        results.append(ctx1.run(client.flow("a/b/A").execute, message="1"))
+                    except Exception as e:
+                        thread_errors.append(e)
 
-                    def run_flow_2() -> None:
-                        try:
-                            results.append(ctx2.run(client.flow("a/b/A").execute, message="2"))
-                        except Exception as e:
-                            thread_errors.append(e)
+                def run_flow_2() -> None:
+                    try:
+                        results.append(ctx2.run(client.flow("a/b/A").execute, message="2"))
+                    except Exception as e:
+                        thread_errors.append(e)
 
-                    t1 = threading.Thread(target=run_flow_1)
-                    t2 = threading.Thread(target=run_flow_2)
-                    t1.start()
-                    t2.start()
-                    t1.join()
-                    t2.join()
-                replay_warnings = [w for w in caught if "concurrent" in str(w.message).lower()]
-                assert len(replay_warnings) >= 1
+                t1 = threading.Thread(target=run_flow_1)
+                t2 = threading.Thread(target=run_flow_2)
+                t1.start()
+                t2.start()
+                t1.join()
+                t2.join()
+            replay_warnings = [w for w in caught if "concurrent" in str(w.message).lower()]
+            assert len(replay_warnings) >= 1
         client.close()
 
     def test_22_execute_outside_decorator_behaves_normally(self):

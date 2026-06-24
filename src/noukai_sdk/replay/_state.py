@@ -11,9 +11,9 @@ if TYPE_CHECKING:
 
 
 class ScopeMode(str, Enum):
-    NORMAL = "normal"      # no decorator; existing behavior
-    CAPTURE = "capture"    # decorator on, no replay header — tag with session_id
-    REPLAY = "replay"      # decorator on + replay header + env var set — serve from cassette
+    NORMAL = "normal"  # no decorator; existing behavior
+    CAPTURE = "capture"  # decorator on, no replay header — tag with session_id
+    REPLAY = "replay"  # decorator on + replay header + env var set — serve from cassette
 
 
 @dataclass

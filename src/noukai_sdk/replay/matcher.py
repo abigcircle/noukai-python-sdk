@@ -162,9 +162,7 @@ async def _find_first_in_explicit_session_async(
     a session_id kwarg that differs from the surrounding scope."""
     from .fetcher import fetch_session_async
 
-    one_shot = await fetch_session_async(
-        transport=transport, session_id=explicit_session_id
-    )
+    one_shot = await fetch_session_async(transport=transport, session_id=explicit_session_id)
     matches = [ex for ex in one_shot.executions if _execution_matches_slug(ex, slug, trigger_type)]
     if not matches:
         raise ReplayMissError(
@@ -339,9 +337,7 @@ async def match_events_async(
             trigger_type="step",
             explicit_session_id=explicit_session_id,
         )
-        _consume_scope_slot_for_explicit_override(
-            scope, slug, "step", "step_first_call_cursor"
-        )
+        _consume_scope_slot_for_explicit_override(scope, slug, "step", "step_first_call_cursor")
         async for event in reconstruct_events_async(one_shot_ex):
             yield event
         return
@@ -374,9 +370,7 @@ def match_events_sync(
             trigger_type="step",
             explicit_session_id=explicit_session_id,
         )
-        _consume_scope_slot_for_explicit_override(
-            scope, slug, "step", "step_first_call_cursor"
-        )
+        _consume_scope_slot_for_explicit_override(scope, slug, "step", "step_first_call_cursor")
         yield from reconstruct_events_sync(one_shot_ex)
         return
 

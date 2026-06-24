@@ -234,10 +234,9 @@ class Flow:
         # the matcher handles the explicit-sid-differs case via one-shot fetch).
         if scope is not None and scope.mode is ScopeMode.REPLAY:
             from .replay.matcher import match_execute_sync
+
             explicit_sid = (
-                session_id
-                if (session_id is not None and session_id != scope.session_id)
-                else None
+                session_id if (session_id is not None and session_id != scope.session_id) else None
             )
             return match_execute_sync(
                 scope=scope,
@@ -691,10 +690,9 @@ class AsyncFlow:
         # matcher handles explicit-sid-differs case via one-shot fetch).
         if scope is not None and scope.mode is ScopeMode.REPLAY:
             from .replay.matcher import match_execute_async
+
             explicit_sid = (
-                session_id
-                if (session_id is not None and session_id != scope.session_id)
-                else None
+                session_id if (session_id is not None and session_id != scope.session_id) else None
             )
             return await match_execute_async(
                 scope=scope,

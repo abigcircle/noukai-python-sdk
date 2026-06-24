@@ -64,8 +64,7 @@ def test_events_run_remaining_true(hello_flow: Flow) -> None:
     # No StepPaused events should appear (run_remaining bypasses step boundaries).
     step_paused_events = [e for e in events if type(e).__name__ == "StepPaused"]
     assert len(step_paused_events) == 0, (
-        f"run_remaining=True should produce no StepPaused events, "
-        f"but got {len(step_paused_events)}"
+        f"run_remaining=True should produce no StepPaused events, but got {len(step_paused_events)}"
     )
 
     # Must still complete.
