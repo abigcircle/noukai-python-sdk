@@ -9,8 +9,8 @@ Before you can publish, the following must be configured once:
 1. **GitHub environment**: In the repo's Settings → Environments, create an environment named `pypi`.
 2. **PyPI trusted publisher**: At https://pypi.org/manage/account/publishing/, add a new trusted publisher:
    - PyPI project name: `noukai-sdk`
-   - GitHub owner: `noukai`
-   - Repository: `noukai-python`
+   - GitHub owner: `abigcircle`
+   - Repository: `noukai-python-sdk`
    - Workflow filename: `release.yml`
    - Environment name: `pypi`
 
@@ -47,8 +47,8 @@ Move the `[Unreleased]` section content under a new dated heading:
 Add the comparison links at the bottom of the file:
 
 ```markdown
-[Unreleased]: https://github.com/noukai/noukai-python/compare/vX.Y.Z...HEAD
-[X.Y.Z]: https://github.com/noukai/noukai-python/compare/vPREV...vX.Y.Z
+[Unreleased]: https://github.com/abigcircle/noukai-python-sdk/compare/vX.Y.Z...HEAD
+[X.Y.Z]: https://github.com/abigcircle/noukai-python-sdk/compare/vPREV...vX.Y.Z
 ```
 
 ### 3. Commit and merge to main
@@ -75,14 +75,12 @@ The release workflow will:
 2. Build the wheel and sdist with `uv build`.
 3. Publish to PyPI via OIDC trusted publisher.
 4. Create a GitHub release with auto-generated release notes.
-5. Deploy updated docs to GitHub Pages.
 
-Monitor progress at: https://github.com/noukai/noukai-python/actions
+Monitor progress at: https://github.com/abigcircle/noukai-python-sdk/actions
 
 ### 6. Verify
 
 - PyPI listing: https://pypi.org/project/noukai-sdk/
-- Docs: https://docs.noukai.xyz/sdk/python/
 - Quick install check: `pip install noukai-sdk==X.Y.Z`
 
 ---

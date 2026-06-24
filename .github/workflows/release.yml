@@ -62,22 +62,3 @@ jobs:
         with:
           generate_release_notes: true
           body_path: CHANGELOG.md
-
-  deploy-docs:
-    name: Deploy docs to GitHub Pages
-    needs: build-and-publish
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write   # Required to push to gh-pages branch
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v3
-
-      - name: Install docs dependencies
-        run: uv sync --extra docs
-
-      - name: Deploy docs to GitHub Pages
-        run: uv run mkdocs gh-deploy --force

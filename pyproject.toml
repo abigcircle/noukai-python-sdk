@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "noukai-sdk"
-version = "0.1.0"
+version = "0.2.0"
 description = "Python SDK for executing Noukai flows from external applications"
 readme = "README.md"
 license = "MIT"
@@ -52,8 +52,8 @@ dev = [
 
 [project.urls]
 Homepage = "https://noukai.xyz"
-Source = "https://github.com/noukai/noukai-python"
-Issues = "https://github.com/noukai/noukai-python/issues"
+Source = "https://github.com/abigcircle/noukai-python-sdk"
+Issues = "https://github.com/abigcircle/noukai-python-sdk/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/noukai_sdk"]
