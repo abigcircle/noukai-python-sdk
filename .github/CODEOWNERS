@@ -1,0 +1,6 @@
+# .github/CODEOWNERS
+# All files: SDK maintainers own everything by default.
+* @noukai/sdk-maintainers
+
+# Docs: co-owned by the docs team.
+docs/ @noukai/sdk-maintainers @noukai/docs

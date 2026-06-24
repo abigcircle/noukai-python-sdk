@@ -1,0 +1,27 @@
+{
+  "_placeholder": true,
+  "description": "Single LLM block configured to call the `get_weather` tool. The LLM is prompted to call the tool before answering; this creates at least one tool-call pause per run. Used by test_tool_calls.py for auto-resume, manual-resume, and max_tool_rounds assertions.",
+  "inputs": {
+    "message": "string — a question that triggers a get_weather tool call (e.g. 'What is the weather in Tokyo?')"
+  },
+  "outputs": {
+    "result": "string — the model's final answer after tool call results are returned"
+  },
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Get the current weather for a location.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "location": { "type": "string", "description": "City name" }
+          },
+          "required": ["location"]
+        }
+      }
+    }
+  ],
+  "TODO": "Author this flow via noukai-mcp create_flow + add_block tools, enabling tools on the LLM block. The system prompt should instruct the model to always call get_weather before answering weather questions. Export to JSON via hydrate_project. See fixtures/README.md."
+}

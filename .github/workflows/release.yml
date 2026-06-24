@@ -1,0 +1,83 @@
+name: Release
+
+# Triggers on semver tags like v0.1.0, v1.2.3, etc.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build-and-publish:
+    name: Build, publish to PyPI & create GitHub release
+    runs-on: ubuntu-latest
+    # The "pypi" environment must be created in the GitHub repo settings
+    # (Settings → Environments → New environment: pypi) and the PyPI trusted
+    # publisher must be configured at:
+    #   https://pypi.org/manage/account/publishing/
+    # pointing at this workflow file path:
+    #   Workflow: .github/workflows/release.yml
+    #   Environment: pypi
+    environment: pypi
+    permissions:
+      id-token: write   # Required for OIDC trusted publisher (no API token needed)
+      contents: write   # Required to create the GitHub release
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install package (no extras — just needs to be importable for version check)
+        run: uv sync
+
+      # Safety guard: the pushed tag (e.g. v0.1.0) must match the version
+      # declared in noukai_sdk._version. Catches "forgot to bump _version.py"
+      # before we reach PyPI (uploads there are permanent).
+      - name: Verify tag matches package version
+        shell: bash
+        run: |
+          TAG_VER="${GITHUB_REF_NAME#v}"
+          FILE_VER=$(uv run python -c "import noukai_sdk; print(noukai_sdk.__version__)")
+          echo "Tag version  : $TAG_VER"
+          echo "Package version: $FILE_VER"
+          if [ "$TAG_VER" != "$FILE_VER" ]; then
+            echo "ERROR: tag $TAG_VER does not match package version $FILE_VER"
+            echo "Update src/noukai_sdk/_version.py and pyproject.toml, then retag."
+            exit 1
+          fi
+
+      - name: Build wheel and sdist
+        run: uv build
+
+      # Uses PyPI's OIDC trusted publisher — no API token stored in GitHub secrets.
+      # See: https://docs.pypi.org/trusted-publishers/
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+      # Creates a GitHub release from the tag with auto-generated release notes
+      # and attaches the CHANGELOG as the body.
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body_path: CHANGELOG.md
+
+  deploy-docs:
+    name: Deploy docs to GitHub Pages
+    needs: build-and-publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # Required to push to gh-pages branch
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install docs dependencies
+        run: uv sync --extra docs
+
+      - name: Deploy docs to GitHub Pages
+        run: uv run mkdocs gh-deploy --force

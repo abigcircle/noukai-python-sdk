@@ -1,0 +1,11 @@
+{
+  "_placeholder": true,
+  "description": "Single-step LLM flow that receives a `message` input and produces a short text response. Used by test_execute.py, test_events.py, test_run_proxy.py, and test_errors.py as the baseline happy-path fixture.",
+  "inputs": {
+    "message": "string — the user prompt forwarded to the LLM block"
+  },
+  "outputs": {
+    "result": "string — the model's response"
+  },
+  "TODO": "Author this flow via noukai-mcp create_flow + add_block tools, then export to JSON via hydrate_project. See fixtures/README.md."
+}

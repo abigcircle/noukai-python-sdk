@@ -1,0 +1,12 @@
+{
+  "_placeholder": true,
+  "description": "Two-block sequential LLM flow. Block 1 transforms the message; Block 2 summarises Block 1's output. The two-step structure is required by test_steps.py to assert exactly two StepCompleted events are yielded per run.",
+  "inputs": {
+    "message": "string — the user prompt forwarded to Block 1"
+  },
+  "outputs": {
+    "result": "string — the final output from Block 2"
+  },
+  "block_count": 2,
+  "TODO": "Author this flow via noukai-mcp create_flow + add_block tools (two separate LLM blocks chained together). Export to JSON via hydrate_project. See fixtures/README.md."
+}

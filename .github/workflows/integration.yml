@@ -1,0 +1,44 @@
+name: Integration (Python SDK)
+
+on:
+  schedule:
+    - cron: "0 6 * * *"   # daily 06:00 UTC
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:       # manual trigger
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NOUKAI_INTEGRATION_KEY: ${{ secrets.NOUKAI_INTEGRATION_KEY }}
+      NOUKAI_INTEGRATION_PROJECT: ${{ vars.NOUKAI_INTEGRATION_PROJECT }}
+      NOUKAI_INTEGRATION_HELLO_SLUG: ${{ vars.NOUKAI_INTEGRATION_HELLO_SLUG }}
+      NOUKAI_INTEGRATION_TWO_STEP_SLUG: ${{ vars.NOUKAI_INTEGRATION_TWO_STEP_SLUG }}
+      NOUKAI_INTEGRATION_TOOLS_SLUG: ${{ vars.NOUKAI_INTEGRATION_TOOLS_SLUG }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: |
+          cd development/noukai/sdk/python
+          uv sync --extra dev
+
+      - name: Run integration tests
+        run: |
+          cd development/noukai/sdk/python
+          uv run pytest tests/integration/ -v --tb=short
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: development/noukai/sdk/python/.pytest_cache/
+          retention-days: 7
