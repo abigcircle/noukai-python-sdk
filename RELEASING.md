@@ -20,6 +20,20 @@ This allows the release workflow to publish to PyPI using OIDC — no long-lived
 
 ## Release steps
 
+### 0. Check version parity with the TypeScript SDK
+
+Both SDKs share a wire protocol and are expected to stay released in lockstep.
+Before bumping the Python SDK, confirm the TypeScript SDK isn't ahead — if it
+is, either port the missing changes first or explicitly accept the drift.
+
+```bash
+python3 scripts/check_parity.py
+```
+
+Assumes the TypeScript SDK is checked out at `../noukai-typescript-sdk`; pass
+`--ts-repo <path>` to override. Exit codes: `0` in sync, `1` drift detected,
+`2` misconfiguration (missing CHANGELOG).
+
 ### 1. Bump versions
 
 Both locations must be updated and must match:
