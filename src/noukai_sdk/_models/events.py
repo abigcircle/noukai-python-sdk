@@ -30,7 +30,14 @@ class StepStarted(_BaseEvent):
     event_type: Literal["step_started"] = Field(alias="eventType")
     step_id: str = Field(alias="stepId")
     name: str | None = None
-    step_index: int | None = Field(default=None, alias="stepIndex")
+    # Flow-absolute, zero-based index of the step that is starting, expressed
+    # in the consumer's frame. The server emits ``stepIndex`` as a
+    # segment-local index (restarts at 0 per /step call); the SDK stamps this
+    # field to a flow-absolute value before yielding, so multi-segment runs
+    # (no ``run_remaining``) and single-segment runs present the same
+    # monotonic sequence to consumers. ``default=0`` is a wire-parse
+    # placeholder — the iterator/reconstructor always overwrite it.
+    step_index: int = Field(default=0, alias="stepIndex")
 
 
 class StepInput(_BaseEvent):
@@ -62,6 +69,13 @@ class StepCompleted(_BaseEvent):
     duration_ms: int | None = Field(default=None, alias="durationMs")
     tokens: _TokenBreakdown | None = None
     cost_usd: str | None = Field(default=None, alias="costUsd")
+    # Flow-absolute, zero-based index of the completed step in the consumer's
+    # frame. Identical semantics to :attr:`StepStarted.step_index` — the SDK
+    # stamps this before yielding so the index of the *completed* step (not
+    # the next one) is reported. The server does not populate this field on
+    # ``step_completed``; the SDK guarantees it on events yielded by
+    # ``Flow.steps()`` / ``Flow.events()``.
+    step_index: int = Field(default=0, alias="stepIndex")
 
 
 class StepFailed(_BaseEvent):
@@ -76,7 +90,13 @@ class StepPaused(_BaseEvent):
 
     event_type: Literal["step_paused"] = Field(alias="eventType")
     step_id: str = Field(alias="stepId")
-    step_index: int | None = Field(default=None, alias="stepIndex")
+    # Flow-absolute, zero-based index of the step that just completed and for
+    # which the iterator is now pausing between transport segments. A
+    # ``step_paused`` event is always preceded by ``step_completed`` for step
+    # N — ``step_paused.step_index == N``, matching the ``step_completed``
+    # that precedes it (the pause belongs to the just-completed step, not to
+    # any subsequent step). SDK-stamped before yielding.
+    step_index: int = Field(default=0, alias="stepIndex")
 
 
 class ToolCallsRequired(_BaseEvent):

@@ -34,6 +34,7 @@ from .._errors import (
 from .._models.responses import ExecuteResult
 from .._models.session import SessionExecution
 from ._state import ReplayCursor, ScopeState
+from .snapshot import strip_trace_sidecars
 
 
 def _execution_matches_slug(
@@ -131,11 +132,13 @@ def _materialize_execute_result(
         )
 
     # Synthesize the success result from the last step's output_snapshot.
+    # Strip reserved trace sidecars (e.g. ``__rendered_prompt__``) so the
+    # replayed result matches the live execute() result, which excludes them.
     final_output = ex.steps[-1].output_snapshot if ex.steps else None
     result = ExecuteResult.model_validate(
         {
             "status": "completed",
-            "result": final_output,
+            "result": strip_trace_sidecars(final_output),
             "executionId": ex.execution_id,
             "flowId": ex.flow_id or "",
             "blockCount": len(ex.steps) if ex.steps else 1,

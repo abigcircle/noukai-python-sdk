@@ -34,6 +34,7 @@ from .._models.events import (
     StreamEvent,
 )
 from .._models.session import SessionExecution
+from .snapshot import strip_trace_sidecars
 
 
 def _reconstruct_iter(ex: SessionExecution) -> Iterator[StreamEvent]:
@@ -54,11 +55,15 @@ def _reconstruct_iter(ex: SessionExecution) -> Iterator[StreamEvent]:
     )
 
     # 2. Per-step events — trust the wire order (BE guarantees started_at ASC).
-    for step in ex.steps:
+    # ``step_index`` is stamped here so the replay path produces the same
+    # flow-absolute, consumer-frame contract as the live EventIterator (see
+    # :mod:`noukai_sdk._models.events` for the SDK guarantee).
+    for step_index, step in enumerate(ex.steps):
         yield StepStarted.model_validate(
             {
                 "eventType": "step_started",
                 "stepId": step.step_id,
+                "stepIndex": step_index,
                 # name is not stored in SessionStepSnapshot; left at default None.
             }
         )
@@ -88,11 +93,14 @@ def _reconstruct_iter(ex: SessionExecution) -> Iterator[StreamEvent]:
             return  # stop after the failed step; no further steps or events.
 
         # Normal step completion — output_snapshot becomes the step output.
+        # Strip reserved trace sidecars so the replayed step_completed output
+        # matches the live step_completed output, which excludes them.
         yield StepCompleted.model_validate(
             {
                 "eventType": "step_completed",
                 "stepId": step.step_id,
-                "output": step.output_snapshot,
+                "output": strip_trace_sidecars(step.output_snapshot),
+                "stepIndex": step_index,
                 # durationMs / tokens / costUsd are not stored in the snapshot;
                 # they are left at their None defaults.
             }
@@ -104,7 +112,7 @@ def _reconstruct_iter(ex: SessionExecution) -> Iterator[StreamEvent]:
         {
             "eventType": "flow_completed",
             "executionId": ex.execution_id,
-            "result": final_output,
+            "result": strip_trace_sidecars(final_output),
         }
     )
 
