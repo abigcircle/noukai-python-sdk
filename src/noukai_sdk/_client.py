@@ -102,7 +102,7 @@ def _resolve_base_url(env: NoukaiEnv | None) -> str:
     """Resolve the base URL from the deployment env shortcut:
 
     1. ``env="dev"`` argument OR ``NOUKAI_ENV=dev`` env var → DEV_BASE_URL
-    2. Production default (``https://api.noukai.xyz/api/v1``)
+    2. Production default (``https://api.noukai.dev/api/v1``)
     """
     env_mode = env or os.environ.get(ENV_ENV_VAR)
     if env_mode in ("dev", "development"):
@@ -181,7 +181,7 @@ class Noukai:
             construction if no key is found or prefix is wrong.
         env: Deployment shortcut: ``"dev"`` points at
             ``http://localhost:8080/api/v1``; ``"production"`` (default)
-            points at ``https://api.noukai.xyz/api/v1``. Falls back to
+            points at ``https://api.noukai.dev/api/v1``. Falls back to
             ``NOUKAI_ENV`` env var. The SDK does not accept an arbitrary
             base URL — all requests target Noukai's hosted endpoints.
         org: Default organisation. When set with ``project``,
@@ -294,7 +294,7 @@ class AsyncNoukai:
             construction if no key is found or prefix is wrong.
         env: Deployment shortcut: ``"dev"`` points at
             ``http://localhost:8080/api/v1``; ``"production"`` (default)
-            points at ``https://api.noukai.xyz/api/v1``. Falls back to
+            points at ``https://api.noukai.dev/api/v1``. Falls back to
             ``NOUKAI_ENV`` env var. The SDK does not accept an arbitrary
             base URL — all requests target Noukai's hosted endpoints.
         org: Default organisation. When set with ``project``,

@@ -30,7 +30,7 @@ Mint an `nk_*` key from the Noukai dashboard:
 - Go to **Settings → API Keys** in your project
 - Click **New API Key**, copy the `nk_...` value
 
-See the [Noukai Docs — API Keys](https://docs.noukai.xyz/concepts/api-keys) for
+See the [Noukai Docs — API Keys](https://docs.noukai.dev/concepts/api-keys) for
 full instructions.
 
 ### 2. Create the Fixture Project and Flows

@@ -1,6 +1,6 @@
 # noukai-sdk
 
-Python SDK for executing [Noukai](https://noukai.xyz) flows.
+Python SDK for executing [Noukai](https://noukai.dev) flows.
 
 Sync and async clients, fully typed (`py.typed`), Pydantic models for results and events, supports Python 3.10+.
 
@@ -98,7 +98,7 @@ client = Noukai(
 
 | Value          | Base URL                                  |
 | -------------- | ----------------------------------------- |
-| `"production"` (default) | `https://api.noukai.xyz/api/v1` |
+| `"production"` (default) | `https://api.noukai.dev/api/v1` |
 | `"dev"`        | `http://localhost:8080/api/v1`            |
 
 Falls back to the `NOUKAI_ENV` env var. The SDK does **not** accept an arbitrary base URL — all requests target Noukai's hosted endpoints.
@@ -570,7 +570,7 @@ finally:
 
 ## Documentation
 
-Full guides, API reference, and examples: <https://noukai.xyz/docs/sdk/python/>
+Full guides, API reference, and examples: <https://noukai.dev/docs/sdk/python/>
 
 ## License
 

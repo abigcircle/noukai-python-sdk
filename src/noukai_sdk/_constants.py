@@ -2,7 +2,7 @@
 
 from typing import Final
 
-DEFAULT_BASE_URL: Final = "https://api.noukai.xyz/api/v1"
+DEFAULT_BASE_URL: Final = "https://api.noukai.dev/api/v1"
 DEV_BASE_URL: Final = "http://localhost:8080/api/v1"
 DEFAULT_TIMEOUT_SECONDS: Final = 300.0
 DEFAULT_JOB_POLL_REQUEST_TIMEOUT_SECONDS: Final = 30.0

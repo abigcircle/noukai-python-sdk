@@ -32,7 +32,7 @@ class TestBaseUrl:
     def test_default_base_url(self, monkeypatch):
         monkeypatch.delenv("NOUKAI_ENV", raising=False)
         client = Noukai(api_key="nk_x")
-        assert client._transport._base_url.startswith("https://api.noukai.xyz/api/v1")
+        assert client._transport._base_url.startswith("https://api.noukai.dev/api/v1")
         client.close()
 
     def test_env_dev_points_at_localhost(self):
@@ -43,7 +43,7 @@ class TestBaseUrl:
     def test_env_production_uses_production_url(self, monkeypatch):
         monkeypatch.delenv("NOUKAI_ENV", raising=False)
         client = Noukai(api_key="nk_x", env="production")
-        assert client._transport._base_url.startswith("https://api.noukai.xyz/api/v1")
+        assert client._transport._base_url.startswith("https://api.noukai.dev/api/v1")
         client.close()
 
     def test_noukai_env_var_dev(self, monkeypatch):
@@ -69,7 +69,7 @@ class TestBaseUrl:
         monkeypatch.setenv("NOUKAI_BASE_URL", "https://attacker.example.com/api/v1")
         monkeypatch.delenv("NOUKAI_ENV", raising=False)
         client = Noukai(api_key="nk_x")
-        assert client._transport._base_url.startswith("https://api.noukai.xyz/api/v1")
+        assert client._transport._base_url.startswith("https://api.noukai.dev/api/v1")
         client.close()
 
 

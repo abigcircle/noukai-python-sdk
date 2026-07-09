@@ -33,7 +33,7 @@ def make_transport(handler, **kwargs):
     """Build an AsyncTransport whose httpx layer is mocked by `handler`."""
     defaults = dict(
         api_key="nk_test123",
-        base_url="https://noukai.xyz/api/v1",
+        base_url="https://noukai.dev/api/v1",
         timeout=30.0,
         max_retries=1,
     )
@@ -382,10 +382,10 @@ class TestUrlResolution:
             captured["url"] = str(request.url)
             return httpx.Response(200, json={})
 
-        transport = make_transport(handler, base_url="https://noukai.xyz/api/v1")
+        transport = make_transport(handler, base_url="https://noukai.dev/api/v1")
         await transport.request("GET", "/seq/acme/spelling/grade-3/execute")
         await transport.aclose()
-        assert captured["url"] == ("https://noukai.xyz/api/v1/seq/acme/spelling/grade-3/execute")
+        assert captured["url"] == ("https://noukai.dev/api/v1/seq/acme/spelling/grade-3/execute")
 
     @pytest.mark.asyncio
     async def test_double_slash_avoided(self):
@@ -397,7 +397,7 @@ class TestUrlResolution:
 
         transport = make_transport(
             handler,
-            base_url="https://noukai.xyz/api/v1/",
+            base_url="https://noukai.dev/api/v1/",
         )
         await transport.request("GET", "/health")
         await transport.aclose()
