@@ -255,6 +255,69 @@ class TestCursorManagement:
         assert "message" not in bodies[1] or bodies[1]["message"] is None
 
 
+class TestStepIndexStamping:
+    """v0.3.0 contract: SDK stamps flow-absolute step_index on
+    StepStarted / StepCompleted / StepPaused before yielding, normalising the
+    server's segment-local (per-/step-call, restarts at 0) indices."""
+
+    async def test_step_index_is_flow_absolute_across_segments(self):
+        """Second /step segment's segment-local ``stepIndex=0`` must be
+        normalised to the flow-absolute ``1`` before yielding to consumers."""
+        from noukai_sdk import StepPaused, StepStarted
+
+        def handler(request):
+            body = json.loads(request.read()) if request.content else {}
+            idx = body.get("stepIndex", 0)
+            if idx == 0:
+                # Segment 1: server emits stepIndex=0 (segment-local) — SDK
+                # should stamp this as flow-absolute 0.
+                return sse_response(
+                    {
+                        "eventType": "run_started",
+                        "executionId": "e",
+                        "runId": "r",
+                        "flowId": "f",
+                        "stepCount": 2,
+                    },
+                    {"eventType": "step_started", "stepId": "s-1", "stepIndex": 0},
+                    {
+                        "eventType": "step_completed",
+                        "stepId": "s-1",
+                        "output": {"a": 1},
+                    },
+                    # BE-emitted step_paused.stepIndex is segment-local (== 0
+                    # on real wire); the SDK is expected to overwrite it with
+                    # the just-completed-step index (0).
+                    {"eventType": "step_paused", "stepId": "s-1", "stepIndex": 0},
+                )
+            # Segment 2: server restarts segment-local stepIndex at 0 — SDK
+            # should stamp both step_started and step_completed as flow-absolute 1.
+            return sse_response(
+                {"eventType": "step_started", "stepId": "s-2", "stepIndex": 0},
+                {
+                    "eventType": "step_completed",
+                    "stepId": "s-2",
+                    "output": {"b": 2},
+                },
+                {"eventType": "flow_completed", "runId": "r"},
+            )
+
+        client = make_client(handler)
+        events = []
+        async for e in client.flow("a/b/c").events(message="hi"):
+            events.append(e)
+        await client.aclose()
+
+        started = [e for e in events if isinstance(e, StepStarted)]
+        completed = [e for e in events if isinstance(e, StepCompleted)]
+        paused = [e for e in events if isinstance(e, StepPaused)]
+
+        assert [e.step_index for e in started] == [0, 1]
+        assert [e.step_index for e in completed] == [0, 1]
+        # step_paused.step_index matches the step_completed that precedes it.
+        assert [e.step_index for e in paused] == [0]
+
+
 class TestEventsRawMode:
     async def test_events_yields_every_event(self):
         def handler(request):

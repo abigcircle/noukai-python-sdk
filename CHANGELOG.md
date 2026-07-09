@@ -6,6 +6,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-07-06
+
+### Breaking
+
+- `StepStarted.step_index`, `StepPaused.step_index`, and
+  `StepCompleted.step_index` are now **required** and **guaranteed to be
+  flow-absolute, consumer-frame indices** stamped by the SDK before each
+  event is yielded. Previously: optional, and (when present from the server)
+  segment-local — every `/step` call's events restarted at `0`, leaking the
+  SDK's pause/resume transport segmentation. Consumers relying on
+  `event.step_index or fallback` can drop the fallback. The new contract
+  holds for both live SSE (async + sync iterators) and replay-mode
+  reconstruction. `step_paused.step_index` reports the index of the
+  just-completed step (the pause is "for" that step), matching the
+  `step_completed` that precedes it.
+- `StepCompleted` gains a `step_index: int` field (previously absent from
+  the wire and the model).
+
+### Fixed
+
+- Replay reconstruction now strips reserved trace sidecar keys (currently
+  `__rendered_prompt__`) from `output_snapshot` before surfacing them on
+  `StepCompleted.output`, `FlowCompleted.result`, and `ExecuteResult.output`.
+  Previously the replayed shape was a superset of the live-execution shape
+  (which excludes those keys), so round-trip equality checks between live
+  and replay results could fail. New helper:
+  `noukai_sdk.replay.snapshot.strip_trace_sidecars`.
+
 ## [0.2.0] — 2026-06-06
 
 ### Added

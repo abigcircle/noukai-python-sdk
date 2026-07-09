@@ -46,6 +46,7 @@ from ._models.events import (
     StepCompleted,
     StepFailed,
     StepPaused,
+    StepStarted,
     StreamEvent,
     ToolCallsRequired,
 )
@@ -226,6 +227,11 @@ class EventIterator:
 
                 elif isinstance(event, StepCompleted):
                     self._accumulated_outputs[event.step_id] = event.output
+                    # Stamp the completed step's index (flow-absolute,
+                    # consumer-frame) BEFORE incrementing. The server does
+                    # not populate ``stepIndex`` on ``step_completed``; the
+                    # SDK guarantees this field per the model doc.
+                    event.step_index = self._step_index
                     self._step_index += 1
                     yield event  # always surfaced (both modes)
 
@@ -272,6 +278,12 @@ class EventIterator:
 
                 elif isinstance(event, StepPaused):
                     # Step protocol pause — server signals "issue next /step".
+                    # ``step_paused`` always follows ``step_completed`` for
+                    # step N; by the time we see it, ``self._step_index`` has
+                    # already been incremented to N+1, so the pause's
+                    # "step that just paused" index is ``self._step_index - 1``
+                    # — matching the ``step_completed`` that precedes it.
+                    event.step_index = self._step_index - 1
                     if not self._yield_only_step_completed:
                         yield event
                     reissue = True
@@ -288,8 +300,19 @@ class EventIterator:
                     flow_complete = True
                     break
 
+                elif isinstance(event, StepStarted):
+                    # Stamp the starting step's index (flow-absolute,
+                    # consumer-frame). During ``step_started`` for step N,
+                    # ``self._step_index == N`` because the increment only
+                    # happens on ``step_completed`` (above). The server emits
+                    # ``stepIndex`` as segment-local (always 0); the SDK
+                    # normalises.
+                    event.step_index = self._step_index
+                    if not self._yield_only_step_completed:
+                        yield event
+
                 else:
-                    # StepStarted, StepInput, StepOutput, etc.
+                    # StepInput, StepOutput, etc.
                     if not self._yield_only_step_completed:
                         yield event
 
@@ -544,6 +567,10 @@ class SyncEventIterator:
 
                 elif isinstance(event, StepCompleted):
                     self._accumulated_outputs[event.step_id] = event.output
+                    # Stamp the completed step's index (flow-absolute,
+                    # consumer-frame) BEFORE incrementing. See the async
+                    # driver above for the SDK guarantee.
+                    event.step_index = self._step_index
                     self._step_index += 1
                     yield event  # always surfaced
 
@@ -574,6 +601,10 @@ class SyncEventIterator:
                     return
 
                 elif isinstance(event, StepPaused):
+                    # See async driver: ``step_paused`` reports the
+                    # just-completed step's index (``self._step_index - 1``
+                    # because we already incremented on ``step_completed``).
+                    event.step_index = self._step_index - 1
                     if not self._yield_only_step_completed:
                         yield event
                     reissue = True
@@ -590,8 +621,14 @@ class SyncEventIterator:
                     flow_complete = True
                     break
 
+                elif isinstance(event, StepStarted):
+                    # Stamp flow-absolute index. See async driver above.
+                    event.step_index = self._step_index
+                    if not self._yield_only_step_completed:
+                        yield event
+
                 else:
-                    # StepStarted, StepInput, StepOutput, etc.
+                    # StepInput, StepOutput, etc.
                     if not self._yield_only_step_completed:
                         yield event
 

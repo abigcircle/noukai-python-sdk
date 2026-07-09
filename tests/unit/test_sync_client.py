@@ -86,6 +86,57 @@ class TestSyncSteps:
         assert all(isinstance(s, StepCompleted) for s in steps)
         assert [s.name for s in steps] == ["a", "b"]
 
+    def test_step_index_is_flow_absolute_across_segments(self):
+        """v0.3.0 contract on the sync driver: SDK stamps flow-absolute
+        step_index on StepCompleted (and StepStarted / StepPaused) before
+        yielding, normalising the server's segment-local indices."""
+        from noukai_sdk import StepPaused, StepStarted
+
+        calls = [0]
+
+        def handler(request):
+            calls[0] += 1
+            if calls[0] == 1:
+                # Segment 1: segment-local stepIndex=0.
+                return httpx.Response(
+                    200,
+                    content=(
+                        b'data: {"eventType": "run_started", "executionId": "e", '
+                        b'"runId": "r", "flowId": "f", "stepCount": 2}\n\n'
+                        b'data: {"eventType": "step_started", "stepId": "s-1", '
+                        b'"stepIndex": 0}\n\n'
+                        b'data: {"eventType": "step_completed", "stepId": "s-1", '
+                        b'"output": {"x": 1}}\n\n'
+                        b'data: {"eventType": "step_paused", "stepId": "s-1", '
+                        b'"stepIndex": 0}\n\n'
+                    ),
+                    headers={"Content-Type": "text/event-stream"},
+                )
+            # Segment 2: server restarts segment-local stepIndex at 0 — SDK
+            # must stamp both events as flow-absolute 1.
+            return httpx.Response(
+                200,
+                content=(
+                    b'data: {"eventType": "step_started", "stepId": "s-2", '
+                    b'"stepIndex": 0}\n\n'
+                    b'data: {"eventType": "step_completed", "stepId": "s-2", '
+                    b'"output": {"y": 2}}\n\n'
+                    b'data: {"eventType": "flow_completed", "runId": "r"}\n\n'
+                ),
+                headers={"Content-Type": "text/event-stream"},
+            )
+
+        with make_client(handler) as client:
+            events = list(client.flow("a/b/c").events(message="hi"))
+
+        started = [e for e in events if isinstance(e, StepStarted)]
+        completed = [e for e in events if isinstance(e, StepCompleted)]
+        paused = [e for e in events if isinstance(e, StepPaused)]
+
+        assert [e.step_index for e in started] == [0, 1]
+        assert [e.step_index for e in completed] == [0, 1]
+        assert [e.step_index for e in paused] == [0]
+
 
 class TestSyncToolHandler:
     def test_sync_handler_loops(self):
