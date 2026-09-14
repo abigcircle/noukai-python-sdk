@@ -43,6 +43,7 @@ INTEGRATION_PROJECT = os.environ.get("NOUKAI_INTEGRATION_PROJECT", "")
 HELLO_SLUG = os.environ.get("NOUKAI_INTEGRATION_HELLO_SLUG")
 TWO_STEP_SLUG = os.environ.get("NOUKAI_INTEGRATION_TWO_STEP_SLUG")
 TOOLS_SLUG = os.environ.get("NOUKAI_INTEGRATION_TOOLS_SLUG")
+AGENT_SLUG = os.environ.get("NOUKAI_INTEGRATION_AGENT_SLUG")
 
 
 def _required_envs_set() -> bool:
@@ -101,6 +102,35 @@ def tools_flow(client: Noukai) -> Flow:
     if not TOOLS_SLUG:
         pytest.skip("NOUKAI_INTEGRATION_TOOLS_SLUG not set")
     return client.flow(TOOLS_SLUG)
+
+
+@pytest.fixture
+def agent_flow(client: Noukai) -> Flow:
+    """A ``kind=chat`` agent flow that accepts ``messages[]`` and has the
+    ``get_weather`` tool enabled — used by the messages[] and relay round-trip
+    integration tests."""
+    if not AGENT_SLUG:
+        pytest.skip("NOUKAI_INTEGRATION_AGENT_SLUG not set")
+    return client.flow(AGENT_SLUG)
+
+
+@pytest.fixture
+async def async_agent_flow(async_client: AsyncNoukai) -> AsyncFlow:
+    """Async version of ``agent_flow``."""
+    if not AGENT_SLUG:
+        pytest.skip("NOUKAI_INTEGRATION_AGENT_SLUG not set")
+    return async_client.flow(AGENT_SLUG)
+
+
+@pytest.fixture
+def agent_coords() -> tuple[str, str, str, str]:
+    """Raw ``(api_key, org, project, slug)`` for the agent flow — used by the
+    relay tests, which construct their own client + mount the relay adapter."""
+    if not AGENT_SLUG:
+        pytest.skip("NOUKAI_INTEGRATION_AGENT_SLUG not set")
+    org, project = _split_project()
+    assert INTEGRATION_KEY is not None  # guarded by pytestmark
+    return INTEGRATION_KEY, org, project, AGENT_SLUG
 
 
 @pytest.fixture

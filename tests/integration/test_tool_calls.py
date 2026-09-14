@@ -17,33 +17,28 @@ from noukai_sdk import AsyncFlow, ExecuteResult, Flow, PausedResult, ToolCallLim
 
 
 def _echo_tool_handler(tool_calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Minimal sync tool handler: echoes back a placeholder result for every call."""
+    """Sync tool handler returning a concrete weather result for every call.
+
+    A definitive answer (not a placeholder token) lets the model conclude in one
+    round instead of re-calling the tool, keeping the single-round tests
+    deterministic against a live model.
+    """
     results: list[dict[str, Any]] = []
     for call in tool_calls:
         call_id = call.get("id", "")
         results.append(
             {
                 "role": "tool",
-                "tool_call_id": call_id,
-                "content": "integration-test-tool-result",
+                "toolCallId": call_id,
+                "content": "Sunny, 22°C.",
             }
         )
     return results
 
 
 async def _async_echo_tool_handler(tool_calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Minimal async tool handler: echoes back a placeholder result for every call."""
-    results: list[dict[str, Any]] = []
-    for call in tool_calls:
-        call_id = call.get("id", "")
-        results.append(
-            {
-                "role": "tool",
-                "tool_call_id": call_id,
-                "content": "async-integration-test-tool-result",
-            }
-        )
-    return results
+    """Async twin of :func:`_echo_tool_handler`."""
+    return _echo_tool_handler(tool_calls)
 
 
 _DUMMY_TOOL = {

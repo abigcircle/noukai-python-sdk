@@ -19,6 +19,8 @@ Skipped by default — no server required for `pytest tests/unit/`.
 | `test_steps.py` | `flow.steps()` step-by-step iteration, cursor management, async parity |
 | `test_events.py` | Raw SSE event stream, event ordering, token fields, run_remaining=True |
 | `test_tool_calls.py` | Auto tool handler, manual resume, max_tool_rounds limit, async handler |
+| `test_messages.py` | `execute(messages=[...])` fresh-call path (design F6): auto-loop, manual pause/resume, async parity, message/messages mutual exclusion |
+| `test_relay.py` | Agent-over-relay round-trip (`mount_flow_relay`/`flow_relay_blueprint` + keyless `RelayFlow`): completion, pause→resume through the relay, `authorize` 403, body bound 413 |
 | `test_run_proxy.py` | Trace endpoints — **all xfail** until server prereq lands |
 | `test_errors.py` | Auth error, slug-not-found, zero-credit account, request_id propagation |
 
@@ -44,6 +46,7 @@ via `noukai-mcp`.
 | `hello-world` | `NOUKAI_INTEGRATION_HELLO_SLUG` | Single LLM block, echoes message |
 | `two-step` | `NOUKAI_INTEGRATION_TWO_STEP_SLUG` | Two sequential LLM blocks |
 | `tools-enabled` | `NOUKAI_INTEGRATION_TOOLS_SLUG` | LLM block with `get_weather` tool |
+| `agent-tools` | `NOUKAI_INTEGRATION_AGENT_SLUG` | `kind=chat` agent (`messages[]`) with `get_weather` tool enabled |
 
 ### 3. Configure Environment Variables
 

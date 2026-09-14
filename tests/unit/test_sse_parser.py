@@ -12,6 +12,7 @@ from noukai_sdk._models.events import (
     FlowCompleted,
     RunStarted,
     StepCompleted,
+    StepPaused,
     ToolCallsRequired,
 )
 from noukai_sdk._streaming import parse_sse_stream
@@ -246,3 +247,28 @@ class TestEventFieldDiscriminator:
         assert len(events) == 1
         assert isinstance(events[0], ToolCallsRequired)
         assert events[0].execution_id == "e-1"
+
+
+class TestExecutionIdOnlyFrames:
+    """Regression: the current server keys ``run_started`` / ``step_paused``
+    frames by ``executionId`` and no longer emits ``runId`` / ``stepId``. These
+    must still validate — if the models required the legacy ids (as they once
+    did) the frames are silently dropped, which drops ``RunStarted`` from
+    ``events()`` and stalls ``steps()`` (the dropped ``step_paused`` never
+    triggers the next ``/step``). See ``_models/events.py``.
+    """
+
+    async def test_run_started_execution_id_only(self):
+        chunks = [sse_frame("run_started", executionId="e-1", flowId="f", stepCount=2)]
+        events = [e async for e in parse_sse_stream(feed(chunks))]
+        assert len(events) == 1
+        assert isinstance(events[0], RunStarted)
+        assert events[0].execution_id == "e-1"
+        assert events[0].run_id is None
+
+    async def test_step_paused_execution_id_only(self):
+        chunks = [sse_frame("step_paused", executionId="e-1", stepIndex=0)]
+        events = [e async for e in parse_sse_stream(feed(chunks))]
+        assert len(events) == 1
+        assert isinstance(events[0], StepPaused)
+        assert events[0].step_id is None

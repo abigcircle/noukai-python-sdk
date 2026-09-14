@@ -14,7 +14,7 @@ DEFAULT_MAX_TOOL_ROUNDS: Final = 10
 # Soft warning threshold for the accumulated `tool_call_messages` list
 # (model request + every round of tool results). When the next resume would
 # push the list past this length, the SDK emits a one-time
-# ``ResourceWarning`` advising the caller — the server will eventually reject
+# ``UserWarning`` advising the caller — the server will eventually reject
 # the request with ``MESSAGES_TOO_LARGE``. Hard ceiling is server-side.
 TOOL_CALL_MESSAGES_SOFT_LIMIT: Final = 200
 

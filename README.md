@@ -244,7 +244,7 @@ Pass `tool_handler`; the SDK runs your handler against each pending call and res
 ```python
 def my_tools(tool_calls: list[dict]) -> list[dict]:
     return [
-        {"tool_call_id": call["id"],
+        {"toolCallId": call["id"],
          "output": get_weather(call["function"]["arguments"])}
         for call in tool_calls
     ]
@@ -274,6 +274,119 @@ print(result.result)
 ```
 
 During streaming, `ToolCallsRequired` events expose the same `.resume(tool_results=...)` method.
+
+### Structured `messages` (chat / agent flows)
+
+`execute()` accepts a structured `messages` list — mutually exclusive with `message` — for chat and agent flows. The last entry is the current user turn:
+
+```python
+result = flow.execute(
+    messages=[{"role": "user", "content": "Draft a spelling pack for grade 3"}],
+    tools=[...],
+    tool_choice="auto",
+)
+```
+
+Roles must be `user`, `assistant`, or `tool` — a `system`/`function` turn is rejected client-side (it would override the flow author's system prompt). The SDK also warns as a `messages` payload approaches the server's 1 MB cap.
+
+### Driving the loop through a relay
+
+When your code holds **no** `nk_` key — a server-to-server caller or a CLI agent talking to a keyholder relay — point the **same** tool-calling loop at the relay endpoint with `RelayFlow` (async: `AsyncRelayFlow`). Each round is POSTed to the relay keyless; the relay injects the key and forwards to the flow:
+
+```python
+from noukai_sdk import RelayFlow
+
+flow = RelayFlow("https://your-server.example.com/agent/execute")
+result = flow.execute(
+    messages=[{"role": "user", "content": "..."}],
+    tools=[...],
+    tool_handler=my_tools,   # identical handler API to flow.execute()
+)
+```
+
+The loop, the client round limit (`10`), and the `PausedResult` you get back are identical to `flow.execute()` — only the transport differs (keyless relay vs the key-holding direct transport). A full runnable example is in [`examples/relay_client.py`](examples/relay_client.py).
+
+## Serving a flow to a browser (relay)
+
+A **relay** lets a browser (or any keyless client) drive a tool-calling flow
+without ever seeing your `nk_` key. Your server holds the key and mounts a thin
+relay endpoint: it bounds abuse, runs your own authorization hook, then forwards
+the request **verbatim** to the flow's `/execute` endpoint and relays the
+upstream response back unchanged. The browser drives the loop and executes tools;
+your server is a keyholder proxy.
+
+The relay never interprets the business payload, never logs the key or body, and
+passes upstream 4xx/5xx through verbatim (built on `Transport.request(...,
+raise_for_status=False)`).
+
+```python
+from fastapi import FastAPI, HTTPException, Request
+from noukai_sdk import AsyncNoukai
+from noukai_sdk.adapters.relay import mount_flow_relay
+
+noukai = AsyncNoukai(api_key="nk_...")  # holds the key server-side
+app = FastAPI()
+
+async def require_maker(request: Request) -> None:
+    # Your app's authorization — raise to reject. Never baked into the SDK.
+    if request.headers.get("x-role") != "maker":
+        raise HTTPException(status_code=403, detail="maker role required")
+
+mount_flow_relay(
+    app,
+    client=noukai,
+    org="acme", project="spelling", slug="pack-maker",
+    path="/agent/execute",          # browsers POST here, keyless
+    authorize=require_maker,        # your auth hook
+    max_body_bytes=262_144,         # 256 KiB — bounded before parse
+    max_messages=40,                # caps messages[] / toolCallMessages[]
+)
+```
+
+The browser POSTs `{ "messages": [...], "tools": [...], "toolChoice": "auto" }`
+(or a resume payload) to `/agent/execute` with no key, receives the flow's
+`completed` / `tool_calls_required` response verbatim, executes the requested
+tools, and POSTs the resume payload back. Bounds violations return
+`413 {"detail": "BODY_TOO_LARGE"}` / `413 {"detail": "TOO_MANY_MESSAGES"}`;
+malformed JSON returns `400 {"detail": "INVALID_JSON"}`; a non-JSON upstream
+returns `{"detail": "UPSTREAM_NON_JSON"}` at the upstream status.
+
+Flask users get the sync equivalent:
+
+```python
+from flask import Flask, abort, request
+from noukai_sdk import Noukai
+from noukai_sdk.adapters.relay import flow_relay_blueprint, RelayBounds
+
+noukai = Noukai(api_key="nk_...")
+app = Flask(__name__)
+
+def require_maker(req) -> None:
+    if req.headers.get("X-Role") != "maker":
+        abort(403)
+
+app.register_blueprint(flow_relay_blueprint(
+    client=noukai,
+    org="acme", project="spelling", slug="pack-maker",
+    authorize=require_maker,
+    bounds=RelayBounds(max_body_bytes=262_144, max_messages=40),
+))
+```
+
+A full runnable example lives in [`examples/relay_fastapi.py`](examples/relay_fastapi.py).
+For the complete relay spec — the three positions (serve / keyless client / the
+TypeScript React front end), the authoritative wire contract, the error table,
+and an implementation checklist — see [`docs/AGENT_RELAY.md`](docs/AGENT_RELAY.md).
+
+> **Notes.** The relay reads the raw body with a hard byte cap (streamed, so an
+> oversized body is rejected mid-read — it is never fully buffered). Do **not**
+> enable `log_payloads` on a relay client: the forwarded browser payload and the
+> upstream body would then reach your log handler (the `nk_` key is never logged
+> regardless). "Verbatim" here means a JSON **value** round-trip — the relay
+> parses the body to bound the message counts and re-serializes it, so values and
+> object key order are preserved, but it is not a byte-identical pipe. On a
+> connection/timeout to the upstream the relay returns
+> `502 {"detail": "UPSTREAM_UNAVAILABLE"}` (there is no upstream status to relay).
 
 ## Replay and session grouping (experimental)
 
@@ -571,6 +684,10 @@ finally:
 ## Documentation
 
 Full guides, API reference, and examples: <https://noukai.dev/docs/sdk/python/>
+
+- [Agent-over-relay implementation guide](docs/AGENT_RELAY.md) — serve a flow to
+  a browser/service, drive it keyless (`RelayFlow` / `AsyncRelayFlow`), and the
+  wire contract with a checklist (written for LLMs implementing relays).
 
 ## License
 

@@ -132,6 +132,7 @@ class AsyncTransport:
         timeout: float | None = None,
         idempotent: bool | None = None,
         extra_headers: dict[str, str] | None = None,
+        raise_for_status: bool = True,
     ) -> Response:
         """Send a non-streaming HTTP request.
 
@@ -146,6 +147,13 @@ class AsyncTransport:
             extra_headers: Optional per-request headers merged on top of
                 ``self._headers``. Built as a new dict each call — does not
                 mutate the shared ``_headers``.
+            raise_for_status: When True (default), non-2xx responses raise the
+                mapped typed exception — today's behavior. When False, the
+                ``Response`` is returned even on non-2xx (retries still apply
+                for idempotent methods first). The relay adapter uses this to
+                forward upstream 4xx/5xx statuses to the browser verbatim
+                (design 20260903-SDK-agent-relay). Connection/timeout errors
+                still raise regardless — there is no response to return.
         """
         body = self._prepare_body(json)
         effective_timeout = timeout if timeout is not None else self._timeout
@@ -208,8 +216,20 @@ class AsyncTransport:
                 await asyncio.sleep(_backoff_seconds(attempt))
                 continue
 
-            # Non-retryable or retries exhausted — raise typed exception
             body_data = _safe_json(resp)
+
+            # Non-raising mode (relay adapter): hand the Response back on non-2xx
+            # instead of raising, so a verbatim relay can forward the upstream
+            # status/body through unchanged. Retries above still applied first.
+            if not raise_for_status:
+                return Response(
+                    status_code=resp.status_code,
+                    body=body_data,
+                    request_id=request_id,
+                    headers=dict(resp.headers),
+                )
+
+            # Non-retryable or retries exhausted — raise typed exception
             code, message = _parse_error_body(body_data)
             retry_after: float | None = None
             if resp.status_code == 429:
@@ -377,6 +397,7 @@ class SyncTransport:
         timeout: float | None = None,
         idempotent: bool | None = None,
         extra_headers: dict[str, str] | None = None,
+        raise_for_status: bool = True,
     ) -> Response:
         """Send a blocking HTTP request.
 
@@ -388,6 +409,11 @@ class SyncTransport:
             extra_headers: Optional per-request headers merged on top of
                 ``self._headers``. Built as a new dict — does not mutate
                 the shared ``_headers``.
+            raise_for_status: When True (default), non-2xx responses raise the
+                mapped typed exception. When False, the ``Response`` is
+                returned even on non-2xx (retries still apply for idempotent
+                methods first) — used by the relay adapter to forward upstream
+                4xx/5xx verbatim. See ``AsyncTransport.request``.
         """
         body = self._prepare_body(json)
         effective_timeout = timeout if timeout is not None else self._timeout
@@ -450,8 +476,20 @@ class SyncTransport:
                 time.sleep(_backoff_seconds(attempt))
                 continue
 
-            # Non-retryable or retries exhausted — raise typed exception
             body_data = _safe_json(resp)
+
+            # Non-raising mode (relay adapter): hand the Response back on non-2xx
+            # instead of raising, so a verbatim relay can forward the upstream
+            # status/body through unchanged. Retries above still applied first.
+            if not raise_for_status:
+                return Response(
+                    status_code=resp.status_code,
+                    body=body_data,
+                    request_id=request_id,
+                    headers=dict(resp.headers),
+                )
+
+            # Non-retryable or retries exhausted — raise typed exception
             code, message = _parse_error_body(body_data)
             retry_after: float | None = None
             if resp.status_code == 429:

@@ -57,7 +57,7 @@ class TestResponseParsing:
             "executionId": "exec-123",
             "pausedAtStep": "step-1",
             "iterationsUsed": 1,
-            "toolCallMessages": [{"role": "assistant", "tool_calls": [{"id": "tc-1"}]}],
+            "toolCallMessages": [{"role": "assistant", "toolCalls": [{"id": "tc-1"}]}],
             "toolCalls": [{"id": "tc-1", "function": {"name": "search"}}],
             "accumulatedOutputs": {"step-0": "done"},
             "flowId": "flow-xyz",

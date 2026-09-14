@@ -488,7 +488,7 @@ class TestToolCallsInIterator:
         def tool_handler(tool_calls):
             handler_calls.append(tool_calls)
             return [
-                {"role": "tool", "tool_call_id": tc["id"], "content": "ok"} for tc in tool_calls
+                {"role": "tool", "toolCallId": tc["id"], "content": "ok"} for tc in tool_calls
             ]
 
         client = make_client(http_handler)
@@ -550,7 +550,7 @@ class TestToolCallsInIterator:
                     tool_results=[
                         {
                             "role": "tool",
-                            "tool_call_id": "tc-1",
+                            "toolCallId": "tc-1",
                             "content": "ok",
                         }
                     ]
@@ -604,7 +604,7 @@ class TestToolCallsInIterator:
         async def async_tool_handler(tool_calls):
             invoked.append(tool_calls)
             return [
-                {"role": "tool", "tool_call_id": tc["id"], "content": "ok"} for tc in tool_calls
+                {"role": "tool", "toolCallId": tc["id"], "content": "ok"} for tc in tool_calls
             ]
 
         client = make_client(http_handler)
@@ -649,7 +649,7 @@ class TestToolCallsInIterator:
 
         def tool_handler(tool_calls):
             return [
-                {"role": "tool", "tool_call_id": tc["id"], "content": "ok"} for tc in tool_calls
+                {"role": "tool", "toolCallId": tc["id"], "content": "ok"} for tc in tool_calls
             ]
 
         from noukai_sdk import ToolCallLimitError

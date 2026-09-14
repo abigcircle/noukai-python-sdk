@@ -84,7 +84,7 @@ class PausedResult(BaseModel):
         ``tool_handler`` to ``flow.execute()`` and let the SDK auto-loop).
 
         Args:
-            tool_results: A list of ``{"role": "tool", "tool_call_id": ...,
+            tool_results: A list of ``{"role": "tool", "toolCallId": ...,
                 "content": ...}`` messages produced by the caller.
 
         Returns:

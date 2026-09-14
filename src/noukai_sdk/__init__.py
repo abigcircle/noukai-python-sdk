@@ -49,6 +49,9 @@ from ._models.events import (
     ToolCallsRequired,
 )
 
+# Request models + keyless relay entrypoint (design 20260903-SDK-agent-relay)
+from ._models.requests import ChatMessage
+
 # Result models
 from ._models.responses import (
     ExecuteResult,
@@ -65,7 +68,9 @@ from ._models.trace import (
     TokenBreakdown,
     Trace,
 )
+from ._relay_flow import AsyncRelayFlow, RelayFlow
 from ._run import AsyncRun, Run
+from ._tool_calls import RelayExecuteTransport, RelaySyncExecuteTransport
 from ._trace_scope import current_session_id, trace, trace_scope, trace_scope_sync
 from ._version import __version__
 
@@ -81,6 +86,13 @@ __all__ = [
     "AsyncRun",
     "Job",
     "AsyncJob",
+    # Keyless relay entrypoint (agent-over-relay)
+    "RelayFlow",
+    "AsyncRelayFlow",
+    "RelayExecuteTransport",
+    "RelaySyncExecuteTransport",
+    # Request models
+    "ChatMessage",
     # Results
     "ExecuteResult",
     "PausedResult",

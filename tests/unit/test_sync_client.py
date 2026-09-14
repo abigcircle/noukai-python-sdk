@@ -166,7 +166,7 @@ class TestSyncToolHandler:
 
         def tool_handler(tool_calls):
             return [
-                {"role": "tool", "tool_call_id": tc["id"], "content": "ok"} for tc in tool_calls
+                {"role": "tool", "toolCallId": tc["id"], "content": "ok"} for tc in tool_calls
             ]
 
         with make_client(handler) as client:

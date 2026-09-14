@@ -85,6 +85,36 @@ weather — always use the tool.
 
 ---
 
+### `agent-tools` (`NOUKAI_INTEGRATION_AGENT_SLUG`)
+
+**Role:** Chat-agent fixture for the `messages[]` fresh-call path (design F6) and
+the agent-over-relay round-trip. Used by `test_messages.py` and `test_relay.py`.
+
+**Structure:**
+- A `kind=chat` flow (accepts a conversation as `messages[]`; a single `message`
+  string also works and stands in for a one-turn conversation).
+- One LLM block with `processor_config.tools_enabled = true`.
+- Composed system prompt (Soul/Goal/Constraints) that **forces** a `get_weather`
+  tool call before answering weather questions — so a fresh call yields at least
+  one tool-call pause.
+- Input: `messages` (list) or `message` (string); the caller injects the
+  `get_weather` tool at execute time. Output: the model's final answer.
+
+**What it tests:**
+- `test_messages.py` — `execute(messages=[...])` auto-loop, manual pause/resume,
+  async parity, and client-side `message`/`messages` mutual exclusion.
+- `test_relay.py` — keyless `RelayFlow`/`AsyncRelayFlow` driving a real relay
+  adapter (`mount_flow_relay` / `flow_relay_blueprint`) that forwards to the live
+  server and relays back verbatim: completion, pause→resume *through the relay*,
+  `authorize` rejection (403), and the raw-byte body bound (413).
+
+**Authoring note:** `create_agent` seeds the chat flow + composed prompt but does
+not wire tool-calling; enable it with a follow-up
+`update_block_config(processor_config={"tools_enabled": true, "files": {...}})`
+(re-send `files` so the composed prompt survives). See `agent-tools.json`.
+
+---
+
 ## How to Author These Flows
 
 Use the `noukai-mcp` tools from within Claude Code (or any MCP client):

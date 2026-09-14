@@ -8,7 +8,16 @@ import inspect
 
 import pytest
 
-from noukai_sdk import AsyncFlow, AsyncNoukai, AsyncRun, Flow, Noukai, Run
+from noukai_sdk import (
+    AsyncFlow,
+    AsyncNoukai,
+    AsyncRelayFlow,
+    AsyncRun,
+    Flow,
+    Noukai,
+    RelayFlow,
+    Run,
+)
 
 
 def public_methods(cls: type) -> set[str]:
@@ -26,6 +35,7 @@ def public_methods(cls: type) -> set[str]:
         (AsyncNoukai, Noukai),
         (AsyncFlow, Flow),
         (AsyncRun, Run),
+        (AsyncRelayFlow, RelayFlow),
     ],
 )
 def test_public_method_names_match(async_cls: type, sync_cls: type) -> None:

@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 from ._constants import DEFAULT_MAX_TOOL_ROUNDS, HEADER_SESSION_ID
 from ._jobs import AsyncJob, Job
 from ._models.events import StepCompleted, StreamEvent
-from ._models.requests import ExecuteRequest
+from ._models.requests import ChatMessage, ExecuteRequest
 from ._models.responses import ExecuteResult, JobAccepted, PausedResult
 from ._paths import flow_base, flow_execute_path, flow_jobs_submit_path
 from ._run import AsyncRun, Run
@@ -21,10 +21,14 @@ from ._step_iterator import (
     make_sync_steps_iterator,
 )
 from ._tool_calls import (
+    DirectExecuteTransport,
+    DirectSyncExecuteTransport,
     _attach_resume,
     _attach_resume_sync,
     _auto_resume_loop,
     _auto_resume_loop_sync,
+    check_messages_payload_size,
+    validate_fresh_call,
 )
 from ._trace_scope import _current_scope
 from .replay._state import ScopeMode
@@ -153,6 +157,7 @@ class Flow:
         self,
         message: str | None = None,
         *,
+        messages: list[ChatMessage | dict[str, Any]] | None = None,
         parameters: dict[str, Any] | None = None,
         block_overrides: dict[str, dict[str, Any]] | None = None,
         attachments: list[dict[str, Any]] | None = None,
@@ -222,6 +227,10 @@ class Flow:
                 "Sync client cannot use async tool_handler. Use AsyncNoukai for async handlers."
             )
 
+        # Client-side validation of the server's fresh-call contract (F6).
+        validate_fresh_call(message, messages)
+        check_messages_payload_size(messages)
+
         scope = _current_scope()
 
         # Precedence: explicit kwarg > transport default > contextvar.
@@ -250,6 +259,7 @@ class Flow:
 
         req = ExecuteRequest(
             message=message,
+            messages=[ChatMessage.model_validate(m) for m in messages] if messages else None,
             parameters=parameters or {},
             block_overrides=block_overrides,
             attachments=attachments,
@@ -273,17 +283,17 @@ class Flow:
         if body.get("status") == "tool_calls_required":
             paused = PausedResult.model_validate(body)
             paused._session_id = effective_sid
+            # Route resume through the execute-transport seam (the direct
+            # transport preserves today's key-holding behavior byte-for-byte).
             paused = _attach_resume_sync(
                 paused,
-                self,
+                DirectSyncExecuteTransport(self, version, timeout),
                 parameters,
                 block_overrides,
                 attachments,
                 tools,
                 tool_choice,
                 trace,
-                version,
-                timeout,
             )
             if tool_handler is not None:
                 return _auto_resume_loop_sync(
@@ -635,6 +645,7 @@ class AsyncFlow:
         self,
         message: str | None = None,
         *,
+        messages: list[ChatMessage | dict[str, Any]] | None = None,
         parameters: dict[str, Any] | None = None,
         block_overrides: dict[str, dict[str, Any]] | None = None,
         attachments: list[dict[str, Any]] | None = None,
@@ -682,6 +693,10 @@ class AsyncFlow:
             FlowExecutionError: server-side execution failure.
             ToolCallLimitError: ``max_tool_rounds`` exhausted.
         """
+        # Client-side validation of the server's fresh-call contract (F6).
+        validate_fresh_call(message, messages)
+        check_messages_payload_size(messages)
+
         scope = _current_scope()
 
         effective_sid = self._resolve_session_id(session_id, scope)
@@ -706,6 +721,7 @@ class AsyncFlow:
 
         req = ExecuteRequest(
             message=message,
+            messages=[ChatMessage.model_validate(m) for m in messages] if messages else None,
             parameters=parameters or {},
             block_overrides=block_overrides,
             attachments=attachments,
@@ -729,17 +745,17 @@ class AsyncFlow:
         if body.get("status") == "tool_calls_required":
             paused = PausedResult.model_validate(body)
             paused._session_id = effective_sid
+            # Route resume through the execute-transport seam (the direct
+            # transport preserves today's key-holding behavior byte-for-byte).
             paused = _attach_resume(
                 paused,
-                self,
+                DirectExecuteTransport(self, version, timeout),
                 parameters,
                 block_overrides,
                 attachments,
                 tools,
                 tool_choice,
                 trace,
-                version,
-                timeout,
             )
             if tool_handler is not None:
                 return await _auto_resume_loop(

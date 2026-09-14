@@ -132,16 +132,20 @@ def test_events_cost_usd_is_string_when_present(hello_flow: Flow) -> None:
 
 
 @pytest.mark.integration
-def test_events_run_started_has_run_id(hello_flow: Flow) -> None:
-    """RunStarted event carries a non-empty run_id."""
+def test_events_run_started_has_identity(hello_flow: Flow) -> None:
+    """RunStarted carries a non-empty run identity.
+
+    The current server keys runs by ``executionId`` (the legacy ``runId`` is no
+    longer emitted on ``run_started``), so assert on ``run_id or execution_id``.
+    """
     events: list[StreamEvent] = list(hello_flow.events(message="run started fields test"))
 
     run_started = [e for e in events if isinstance(e, RunStarted)]
     assert len(run_started) >= 1
 
     for e in run_started:
-        assert e.run_id is not None
-        assert e.run_id != ""
+        identity = e.execution_id or e.run_id
+        assert identity, f"RunStarted carries neither executionId nor runId: {e!r}"
 
 
 @pytest.mark.integration

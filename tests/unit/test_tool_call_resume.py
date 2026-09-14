@@ -31,7 +31,7 @@ def paused_payload(iterations=1, tool_id="tc-1"):
             {"role": "user", "content": "search for X"},
             {
                 "role": "assistant",
-                "tool_calls": [{"id": tool_id, "function": {"name": "search", "arguments": "{}"}}],
+                "toolCalls": [{"id": tool_id, "function": {"name": "search", "arguments": "{}"}}],
             },
         ],
         "toolCalls": [{"id": tool_id, "function": {"name": "search", "arguments": "{}"}}],
@@ -86,7 +86,7 @@ class TestManualResume:
         )
         assert isinstance(paused, PausedResult)
         final = await paused.resume(
-            tool_results=[{"role": "tool", "tool_call_id": "tc-1", "content": "result"}]
+            tool_results=[{"role": "tool", "toolCallId": "tc-1", "content": "result"}]
         )
         await client.aclose()
         assert isinstance(final, ExecuteResult)
@@ -98,7 +98,7 @@ class TestManualResume:
         # Last message in toolCallMessages must be a tool result
         msgs = second["toolCallMessages"]
         assert msgs[-1]["role"] == "tool"
-        assert msgs[-1]["tool_call_id"] == "tc-1"
+        assert msgs[-1]["toolCallId"] == "tc-1"
 
     @pytest.mark.asyncio
     async def test_resume_can_yield_another_pause(self):
@@ -117,11 +117,11 @@ class TestManualResume:
         first = await flow.execute(message="hi", tools=[{}])
         assert isinstance(first, PausedResult)
         second = await first.resume(
-            tool_results=[{"role": "tool", "tool_call_id": "tc-1", "content": "x"}]
+            tool_results=[{"role": "tool", "toolCallId": "tc-1", "content": "x"}]
         )
         assert isinstance(second, PausedResult)
         third = await second.resume(
-            tool_results=[{"role": "tool", "tool_call_id": "tc-2", "content": "y"}]
+            tool_results=[{"role": "tool", "toolCallId": "tc-2", "content": "y"}]
         )
         await client.aclose()
         assert isinstance(third, ExecuteResult)
@@ -170,7 +170,7 @@ class TestAutoResume:
         def tool_handler(tool_calls):
             handler_calls.append(tool_calls)
             return [
-                {"role": "tool", "tool_call_id": tc["id"], "content": "ok"} for tc in tool_calls
+                {"role": "tool", "toolCallId": tc["id"], "content": "ok"} for tc in tool_calls
             ]
 
         client = make_client(http_handler)
@@ -200,7 +200,7 @@ class TestAutoResume:
         def tool_handler(tool_calls):
             handler_calls.append(tool_calls)
             return [
-                {"role": "tool", "tool_call_id": tc["id"], "content": "ok"} for tc in tool_calls
+                {"role": "tool", "toolCallId": tc["id"], "content": "ok"} for tc in tool_calls
             ]
 
         client = make_client(http_handler)
@@ -222,7 +222,7 @@ class TestAutoResume:
 
         async def async_tool_handler(tool_calls):
             return [
-                {"role": "tool", "tool_call_id": tc["id"], "content": "ok"} for tc in tool_calls
+                {"role": "tool", "toolCallId": tc["id"], "content": "ok"} for tc in tool_calls
             ]
 
         client = make_client(http_handler)
@@ -242,7 +242,7 @@ class TestAutoResume:
 
         def tool_handler(tool_calls):
             return [
-                {"role": "tool", "tool_call_id": tc["id"], "content": "ok"} for tc in tool_calls
+                {"role": "tool", "toolCallId": tc["id"], "content": "ok"} for tc in tool_calls
             ]
 
         client = make_client(http_handler)
@@ -275,7 +275,7 @@ class TestAutoResume:
             )
 
         def tool_handler(tool_calls):
-            return [{"role": "tool", "tool_call_id": tc["id"], "content": "x"} for tc in tool_calls]
+            return [{"role": "tool", "toolCallId": tc["id"], "content": "x"} for tc in tool_calls]
 
         client = make_client(http_handler)
         with pytest.raises(FlowExecutionError) as exc:

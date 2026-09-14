@@ -1,0 +1,31 @@
+{
+  "_placeholder": true,
+  "description": "A kind=chat agent flow (accepts a conversation as `messages[]`) with the LLM block's `tools_enabled` set. The composed system prompt (Soul/Goal/Constraints) forces a `get_weather` tool call before answering, so a fresh call yields at least one tool-call pause. Used by test_messages.py (the `messages[]` fresh-call path, design F6) and test_relay.py (the agent-over-relay round-trip: adapter -> live server -> back, verbatim).",
+  "kind": "chat",
+  "inputs": {
+    "messages": "list[ChatMessage] — the conversation; the last entry is the current user turn (role in {user, assistant, tool}). `message` (single string) is also accepted and stands in for a one-turn `messages`.",
+    "tools": "list[ToolDef] — injected by the CALLER at execute time (not stored on the flow); e.g. the get_weather stub below"
+  },
+  "outputs": {
+    "result": "the model's final answer after tool results are returned"
+  },
+  "tools_note": "Tools are ENABLED on the LLM block via processor_config.tools_enabled=true; the tool SCHEMAS are supplied by the caller's execute(tools=[...]) call, mirroring how a browser/agent drives the loop. The get_weather stub used by the tests:",
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Get the current weather for a location (integration test stub).",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "location": { "type": "string", "description": "City name" }
+          },
+          "required": ["location"]
+        }
+      }
+    }
+  ],
+  "authoring": "Authored via noukai-mcp: create_agent(kind=chat, slug='agent-tools', system_prompt/goal/constraints forcing a get_weather call), then update_block_config(processor_config={tools_enabled: true, files: {...}}) to enable tool-calling on the block while preserving the composed prompt. The SDK calls the DRAFT version by default (flow.execute/relay default version='draft'), so no publish step is required.",
+  "env_var": "NOUKAI_INTEGRATION_AGENT_SLUG"
+}

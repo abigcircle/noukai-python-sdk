@@ -20,7 +20,11 @@ class _BaseEvent(BaseModel):
 
 class RunStarted(_BaseEvent):
     event_type: Literal["run_started", "flow_started"] = Field(alias="eventType")
-    run_id: str = Field(alias="runId")
+    # The server keys run/step frames by ``executionId``; ``runId`` is the legacy
+    # spelling and is no longer emitted on ``run_started``. Keep ``run_id``
+    # optional (mirrors ``FlowCompleted``) so the frame validates and is not
+    # silently dropped — the run identity is ``execution_id``.
+    run_id: str | None = Field(default=None, alias="runId")
     execution_id: str | None = Field(default=None, alias="executionId")
     flow_id: str | None = Field(default=None, alias="flowId")
     step_count: int | None = Field(default=None, alias="stepCount")
@@ -89,7 +93,12 @@ class StepPaused(_BaseEvent):
     """Step-protocol pause between steps (not a tool-call pause)."""
 
     event_type: Literal["step_paused"] = Field(alias="eventType")
-    step_id: str = Field(alias="stepId")
+    # ``step_paused`` is keyed by ``executionId`` on the wire and does not carry
+    # a ``stepId``; keep ``step_id`` optional so the frame validates. If it were
+    # required, this frame would be dropped and ``Flow.steps()`` would stall
+    # after the first segment (it relies on ``step_paused`` to issue the next
+    # ``/step``). ``step_index`` is SDK-stamped before yielding.
+    step_id: str | None = Field(default=None, alias="stepId")
     # Flow-absolute, zero-based index of the step that just completed and for
     # which the iterator is now pausing between transport segments. A
     # ``step_paused`` event is always preceded by ``step_completed`` for step
