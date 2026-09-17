@@ -8,7 +8,7 @@ API; anything in `noukai_sdk._foo` is private and may change without notice.
 from ._client import AsyncNoukai, Noukai
 
 # Exceptions
-# Replay / trace (design 20260605-SDK-replay-decorator)
+# Replay scope (design 20260605-SDK-replay-decorator)
 from ._errors import (
     APIConnectionError,
     APITimeoutError,
@@ -69,9 +69,9 @@ from ._models.trace import (
     Trace,
 )
 from ._relay_flow import AsyncRelayFlow, RelayFlow
+from ._replay_scope import current_session_id, replay, replay_scope, replay_scope_sync
 from ._run import AsyncRun, Run
 from ._tool_calls import RelayExecuteTransport, RelaySyncExecuteTransport
-from ._trace_scope import current_session_id, trace, trace_scope, trace_scope_sync
 from ._version import __version__
 
 __all__ = [
@@ -137,8 +137,8 @@ __all__ = [
     "ReplaySessionExpiredError",
     "ReplaySessionNotFoundError",
     # Replay scope
-    "trace",
-    "trace_scope",
-    "trace_scope_sync",
+    "replay",
+    "replay_scope",
+    "replay_scope_sync",
     "current_session_id",
 ]

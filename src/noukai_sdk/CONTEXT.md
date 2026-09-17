@@ -23,7 +23,7 @@ src/noukai_sdk/
     events.py            # Typed SSE event models (RunStarted, StepCompleted, …)
     responses.py         # ExecuteResult, PausedResult, JobAccepted, JobStatus
     trace.py             # Trace, RunSummary, StepTrace, StepAttempts, TokenBreakdown
-  _trace_scope.py        # trace decorator, trace_scope/trace_scope_sync CMs, current_session_id()
+  _replay_scope.py        # replay decorator, replay_scope/replay_scope_sync CMs, current_session_id()
   _version.py            # __version__ string
   py.typed               # PEP 561 marker
   replay/
@@ -48,18 +48,18 @@ All public exports are declared in `__init__.py`:
 - **Events:** `StreamEvent`, `RunStarted`, `StepStarted`, `StepInput`, `StepOutput`, `StepCompleted`, `StepFailed`, `StepPaused`, `ToolCallsRequired`, `FlowCompleted`
 - **Trace models:** `Trace`, `RunSummary`, `StepTrace`, `StepAttempts`, `TokenBreakdown`
 - **Errors:** `NoukaiError` + 9 subclasses + `ReplayError` + 8 replay subclasses
-- **Replay scope:** `trace`, `trace_scope`, `trace_scope_sync`, `current_session_id`
+- **Replay scope:** `replay`, `replay_scope`, `replay_scope_sync`, `current_session_id`
 - **Adapters** (subpath imports only, not in `__init__.py`):
   - `from noukai_sdk.adapters.fastapi import NoukaiTraceMiddleware`
   - `from noukai_sdk.adapters.flask import init_noukai_trace`
 
 ## Replay subsystem (added 0.2.0)
 
-Implemented in `_trace_scope.py` + `replay/`. Allows grouping multiple SDK
+Implemented in `_replay_scope.py` + `replay/`. Allows grouping multiple SDK
 calls under one session id (capture) and later replaying recorded responses
 deterministically (replay).
 
-**Capture mode:** always active when `@trace` / `trace_scope` is used. The SDK
+**Capture mode:** always active when `@replay` / `replay_scope` is used. The SDK
 injects `X-Session-Id` on every outbound request.
 
 **Replay mode:** activated when `NOUKAI_REPLAY_ENABLED=true` AND the adapter

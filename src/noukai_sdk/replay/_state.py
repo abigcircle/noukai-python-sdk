@@ -42,7 +42,7 @@ class StepFlowMapping:
 
 @dataclass
 class ScopeState:
-    """Held by the contextvar for the duration of a trace_scope."""
+    """Held by the contextvar for the duration of a replay_scope."""
 
     mode: ScopeMode
     session_id: str | None = None

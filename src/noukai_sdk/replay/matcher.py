@@ -109,7 +109,7 @@ def _materialize_execute_result(
     """Construct an ExecuteResult from a recorded execution, raising recorded
     errors instead if present.
 
-    ``scope_session_id`` is the session_id from the surrounding trace_scope,
+    ``scope_session_id`` is the session_id from the surrounding replay_scope,
     surfaced on ``result.session_id`` per Phase 5 contract.
     """
     # If the execution recorded an error, re-raise it faithfully.

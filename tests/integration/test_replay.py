@@ -1,6 +1,6 @@
 """Integration tests for the replay feature against a live Noukai server.
 
-Covers the @noukai.trace decorator / trace_scope context manager end-to-end:
+Covers the @noukai.replay decorator / replay_scope context manager end-to-end:
 
 - **Capture mode** (live today): scope opens, X-Session-Id flows on the wire,
   result.session_id surfaces, no breakage of existing execute() contract.
@@ -38,8 +38,8 @@ from noukai_sdk import (
     StepCompleted,
     StreamEvent,
     current_session_id,
-    trace_scope,
-    trace_scope_sync,
+    replay_scope,
+    replay_scope_sync,
 )
 
 # --------------------------------------------------------------------------- #
@@ -70,13 +70,13 @@ def replay_enabled_env() -> Any:
 
 @pytest.mark.integration
 def test_capture_scope_surfaces_session_id_on_result(hello_flow: Flow) -> None:
-    """trace_scope_sync opens capture mode; result.session_id is populated.
+    """replay_scope_sync opens capture mode; result.session_id is populated.
 
     This is the headline capture-mode contract: a user wraps their handler in
     the scope, calls execute() normally, and the resulting ExecuteResult
     carries the session id so they can log / surface it later.
     """
-    with trace_scope_sync() as scope:
+    with replay_scope_sync() as scope:
         scope_session_id = scope.session_id
         result = hello_flow.execute(message="capture-mode integration check")
 
@@ -94,7 +94,7 @@ def test_capture_current_session_id_visible_during_call(hello_flow: Flow) -> Non
     survives the synchronous execute() round-trip."""
     assert current_session_id() is None  # outside scope
 
-    with trace_scope_sync() as scope:
+    with replay_scope_sync() as scope:
         observed_inside = current_session_id()
         result = hello_flow.execute(message="contextvar check")
 
@@ -109,7 +109,7 @@ def test_capture_multiple_calls_share_session_id(hello_flow: Flow) -> None:
     proves the scope is a request-spanning, not call-spanning, unit. This is
     the property session-grouping on the backend relies on to cluster
     executions."""
-    with trace_scope_sync() as scope:
+    with replay_scope_sync() as scope:
         a = hello_flow.execute(message="first")
         b = hello_flow.execute(message="second")
 
@@ -123,7 +123,7 @@ def test_capture_multiple_calls_share_session_id(hello_flow: Flow) -> None:
 @pytest.mark.integration
 async def test_async_capture_scope_surfaces_session_id(async_hello_flow: AsyncFlow) -> None:
     """Async parity for the headline capture contract."""
-    async with trace_scope() as scope:
+    async with replay_scope() as scope:
         result = await async_hello_flow.execute(message="async capture check")
 
     assert isinstance(result, ExecuteResult)
@@ -218,7 +218,7 @@ def test_replay_round_trip_returns_recorded_output(client: Noukai, hello_flow: F
     ReplayMissError or ReplaySessionNotFoundError.
     """
     # --- Capture ---
-    with trace_scope_sync() as scope:
+    with replay_scope_sync() as scope:
         captured = hello_flow.execute(message="replay round-trip seed")
         captured_session_id = scope.session_id
 
@@ -228,7 +228,7 @@ def test_replay_round_trip_returns_recorded_output(client: Noukai, hello_flow: F
     # --- Replay ---
     with (
         replay_enabled_env(),
-        trace_scope_sync(
+        replay_scope_sync(
             replay_session_id=captured_session_id, transport=client._transport
         ) as scope2,
     ):
@@ -249,13 +249,13 @@ def test_replay_miss_when_call_differs_from_recording(client: Noukai, hello_flow
     Specifically: capture a single execute(); then inside the replay scope call
     execute() TWICE for the same slug. The first lookup succeeds; the second
     has no recording at slug position 1 and must raise ReplayMissError."""
-    with trace_scope_sync() as scope:
+    with replay_scope_sync() as scope:
         hello_flow.execute(message="first and only recorded call")
         captured_session_id = scope.session_id
 
     with (
         replay_enabled_env(),
-        trace_scope_sync(replay_session_id=captured_session_id, transport=client._transport),
+        replay_scope_sync(replay_session_id=captured_session_id, transport=client._transport),
     ):
         hello_flow.execute(message="first replayed call")  # OK — matches position 0
         with pytest.raises(ReplayError):
@@ -290,7 +290,7 @@ def test_complex_replay_mixed_execute_and_events_across_flows(
     cassette in the same order they were captured.
     """
     # --- Capture phase ---
-    with trace_scope_sync() as scope:
+    with replay_scope_sync() as scope:
         captured_hello_1 = hello_flow.execute(message="setup call")
         assert isinstance(captured_hello_1, ExecuteResult)
         captured_two_step_events: list[StreamEvent] = list(
@@ -312,9 +312,9 @@ def test_complex_replay_mixed_execute_and_events_across_flows(
     # --- Replay phase ---
     with (
         replay_enabled_env(),
-        trace_scope_sync(
+        replay_scope_sync(
             replay_session_id=captured_session_id, transport=client._transport
-        ) as replay_scope,
+        ) as replay_scope_state,
     ):
         replayed_hello_1 = hello_flow.execute(message="setup call")
         assert isinstance(replayed_hello_1, ExecuteResult)
@@ -322,7 +322,7 @@ def test_complex_replay_mixed_execute_and_events_across_flows(
         replayed_hello_2 = hello_flow.execute(message="post-processing call")
         assert isinstance(replayed_hello_2, ExecuteResult)
 
-    assert replay_scope.mode.value == "replay"
+    assert replay_scope_state.mode.value == "replay"
 
     # Same execution_id on each execute() call → the model wasn't re-invoked.
     assert replayed_hello_1.execution_id == captured_hello_1.execution_id
@@ -373,13 +373,13 @@ def test_replay_events_reconstructs_canonical_sse_sequence(
     byte-for-byte equivalence with the live capture (which may include
     extra event types like StepInput/StepOutput that the reconstructor omits).
     """
-    with trace_scope_sync() as scope:
+    with replay_scope_sync() as scope:
         list(two_step_flow.events(message="reconstruction test"))
         captured_session_id = scope.session_id
 
     with (
         replay_enabled_env(),
-        trace_scope_sync(replay_session_id=captured_session_id, transport=client._transport),
+        replay_scope_sync(replay_session_id=captured_session_id, transport=client._transport),
     ):
         replayed = list(two_step_flow.events(message="reconstruction test"))
 
@@ -407,7 +407,7 @@ def test_replay_leftover_error_when_scope_closes_with_unconsumed_executions(
     is now making fewer calls than the cassette has. Surfaced as an error so
     the user knows the replay is incomplete (R6).
     """
-    with trace_scope_sync() as scope:
+    with replay_scope_sync() as scope:
         hello_flow.execute(message="call 1")
         hello_flow.execute(message="call 2")
         hello_flow.execute(message="call 3")
@@ -416,7 +416,7 @@ def test_replay_leftover_error_when_scope_closes_with_unconsumed_executions(
     def _replay_with_too_few_calls() -> None:
         with (
             replay_enabled_env(),
-            trace_scope_sync(replay_session_id=captured_session_id, transport=client._transport),
+            replay_scope_sync(replay_session_id=captured_session_id, transport=client._transport),
         ):
             hello_flow.execute(message="call 1")
             hello_flow.execute(message="call 2")
@@ -440,13 +440,13 @@ def test_replay_miss_on_wrong_flow_slug(
     The matcher is slug-positional. A call to a flow slug that has no recording
     in the session is a miss — not a leftover (the cassette has executions, but
     none for the slug being called)."""
-    with trace_scope_sync() as scope:
+    with replay_scope_sync() as scope:
         hello_flow.execute(message="recorded only against hello")
         captured_session_id = scope.session_id
 
     with (
         replay_enabled_env(),
-        trace_scope_sync(replay_session_id=captured_session_id, transport=client._transport),
+        replay_scope_sync(replay_session_id=captured_session_id, transport=client._transport),
         pytest.raises(ReplayMissError),
     ):
         two_step_flow.execute(message="wrong flow — no recording for this slug")

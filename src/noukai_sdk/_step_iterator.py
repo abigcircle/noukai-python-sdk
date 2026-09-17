@@ -188,7 +188,7 @@ class EventIterator:
         # Resolve effective session id for X-Session-Id injection.
         # Precedence: per-call kwarg > client default > scope (capture mode).
         # Uses `is not None` so an explicit "" is not silently overridden.
-        from ._trace_scope import _current_scope
+        from ._replay_scope import _current_scope
 
         scope = _current_scope()
         effective_sid: str | None = None
@@ -341,7 +341,7 @@ def make_events_iterator(
     scope" precedence. We recover the *user-explicit* sid here to drive the
     one-shot path correctly.
     """
-    from ._trace_scope import _current_scope
+    from ._replay_scope import _current_scope
     from .replay._state import ScopeMode
 
     scope = _current_scope()
@@ -384,7 +384,7 @@ def make_steps_iterator(
     the StepCompleted filter is applied downstream via the iterator option.
     Unified Q1 rule applies — see :func:`make_events_iterator`.
     """
-    from ._trace_scope import _current_scope
+    from ._replay_scope import _current_scope
     from .replay._state import ScopeMode
 
     scope = _current_scope()
@@ -530,7 +530,7 @@ class SyncEventIterator:
 
         # Resolve effective session id for X-Session-Id injection. Same
         # precedence as :class:`EventIterator._drive` — see comment there.
-        from ._trace_scope import _current_scope
+        from ._replay_scope import _current_scope
 
         scope = _current_scope()
         effective_sid: str | None = None
@@ -648,7 +648,7 @@ def make_sync_events_iterator(
     In REPLAY mode, always dispatches to the matcher's sync generator. See
     :func:`make_events_iterator` for the unified Q1 rule.
     """
-    from ._trace_scope import _current_scope
+    from ._replay_scope import _current_scope
     from .replay._state import ScopeMode
 
     scope = _current_scope()
@@ -686,7 +686,7 @@ def make_sync_steps_iterator(
     In REPLAY mode, delegates to the matcher's sync generator. Unified
     Q1 rule applies — see :func:`make_events_iterator`.
     """
-    from ._trace_scope import _current_scope
+    from ._replay_scope import _current_scope
     from .replay._state import ScopeMode
 
     scope = _current_scope()
