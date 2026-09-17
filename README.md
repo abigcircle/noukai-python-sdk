@@ -138,7 +138,7 @@ result = client.flow("acme/spelling/grade-3").execute(
     block_overrides={"step-id": {"temperature": 0.5}},
     attachments=[{"url": "https://...", "mime_type": "image/png"}],
     trace=False,                                # capture full I/O for trace
-    version="draft",                            # or an int published version
+    version="production",                       # default; or "draft" / an int published version
     timeout=60.0,                               # override client default
 )
 
@@ -574,11 +574,14 @@ pip install "noukai-sdk[flask]"     # pulls flask>=3.0
 
 | `version`        | Behaviour                                                            |
 | ---------------- | -------------------------------------------------------------------- |
-| `"draft"` *(default)* | Latest unpublished draft (what you see in the editor).          |
+| `"production"` *(default)* | The flow's published production version. Falls back to the live draft when the flow has no published version. |
+| `"draft"`        | The latest unpublished draft (what you see in the editor). Not supported by `steps()` / `events()`. |
 | `<int>`          | A specific published version (e.g. `version=3`).                     |
-| `"production"`   | **Not yet supported** — raises `NotImplementedError` at call site.   |
 
-Pin a version when calling from production code; use `"draft"` only in test and preview environments.
+`execute()` / `execute_async()` accept all three. `steps()` / `events()` accept
+`"production"` or an int only — the server does not support step-through on the
+draft. Use `"draft"` in test and preview environments; the default
+(`"production"`) is what you want from production code.
 
 ## Run traces
 

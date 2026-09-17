@@ -36,7 +36,8 @@ _UUID_RE: Final = re.compile(
     r"\A[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\Z"
 )
 
-# Version selector: "draft" or a positive int (= /v{N}).
+# Wire version segment: "production" (base path) or a non-negative int (= /v{N};
+# 0 = the reserved draft alias).
 VersionSegment = str | int
 
 
@@ -49,16 +50,19 @@ def flow_base(
     org: str,
     project: str,
     slug: str,
-    version: VersionSegment = "draft",
+    version: VersionSegment = "production",
 ) -> str:
     """Build the versioned base path for a flow.
 
-    - ``"draft"`` → ``/seq/{org}/{project}/{slug}``
-    - ``<int>``   → ``/seq/{org}/{project}/{slug}/v{N}``
+    The server routes versions by URL path (there is no body-field routing):
+    - ``"production"`` → ``/seq/{org}/{project}/{slug}``      (base = production;
+      the server falls back to draft/live if the flow has no published version)
+    - ``0``            → ``/seq/{org}/{project}/{slug}/v0``   (reserved draft alias)
+    - ``<int>`` (≥1)   → ``/seq/{org}/{project}/{slug}/v{N}`` (published version N)
 
-    ``"production"`` is intentionally unsupported here — callers must reject
-    it before reaching this helper (server-side body-field routing not
-    deployed).
+    Callers pass the wire segment produced by ``Flow._path_version``, which
+    coerces the public ``VersionSpec`` ("draft" | "production" | <int>) into this
+    shape. See design 20260917-SDK-version-production-routing.
     """
     base = f"{_SEQ_PREFIX}/{org}/{project}/{slug}"
     if isinstance(version, int):
@@ -75,7 +79,7 @@ def flow_execute_path(
     org: str,
     project: str,
     slug: str,
-    version: VersionSegment = "draft",
+    version: VersionSegment = "production",
 ) -> str:
     """``POST /seq/{org}/{project}/{slug}[/vN]/execute`` -- synchronous execute."""
     return f"{flow_base(org, project, slug, version)}/execute"
@@ -85,7 +89,7 @@ def flow_step_path(
     org: str,
     project: str,
     slug: str,
-    version: VersionSegment = "draft",
+    version: VersionSegment = "production",
 ) -> str:
     """``POST /seq/{org}/{project}/{slug}[/vN]/step`` -- SSE step stream."""
     return f"{flow_base(org, project, slug, version)}/step"
@@ -95,7 +99,7 @@ def flow_jobs_submit_path(
     org: str,
     project: str,
     slug: str,
-    version: VersionSegment = "draft",
+    version: VersionSegment = "production",
 ) -> str:
     """``POST /seq/{org}/{project}/{slug}[/vN]/jobs`` -- queue-backed submit."""
     return f"{flow_base(org, project, slug, version)}/jobs"

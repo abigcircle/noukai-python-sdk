@@ -72,6 +72,33 @@ class TestExecuteAsync:
         await client.aclose()
         assert captured["path"].endswith("/seq/acme/spelling/grade-3/jobs")
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("version", "suffix"),
+        [
+            ("production", "/seq/a/b/c/jobs"),
+            ("draft", "/seq/a/b/c/v0/jobs"),
+            (3, "/seq/a/b/c/v3/jobs"),
+        ],
+    )
+    async def test_jobs_version_routing(self, version, suffix):
+        """execute_async routes by path like execute: base=production,
+        /v0=draft, /vN=version N (design 20260917-SDK-version-production-routing).
+        """
+        captured = {}
+
+        def handler(request):
+            captured["path"] = request.url.path
+            return httpx.Response(
+                200,
+                json={"executionId": "e", "status": "started", "flowId": "f", "blockCount": 1},
+            )
+
+        client = make_client(handler)
+        await client.flow("a/b/c").execute_async(message="hi", version=version)
+        await client.aclose()
+        assert captured["path"].endswith(suffix)
+
 
 class TestJobPoll:
     @pytest.mark.asyncio

@@ -53,6 +53,8 @@ def test_parent_span_emitted_end_to_end() -> None:
     assert span.attributes["noukai.flow.slug"] == _HELLO
     assert span.attributes["noukai.execution_id"] == result.execution_id
     assert span.attributes["noukai.flow.status"] == "completed"
+    # The live execute() should also surface the flow output.
+    assert result.output is not None
 
 
 @pytest.mark.integration

@@ -31,6 +31,20 @@ def test_execute_returns_typed_result(hello_flow: Flow) -> None:
 
 
 @pytest.mark.integration
+def test_execute_output_is_available(hello_flow: Flow) -> None:
+    """A completed execute() surfaces the flow's output.
+
+    ``.output`` is a read-alias for ``.result``; both must carry the flow's
+    output (the hello-world fixture must produce a non-empty output).
+    """
+    result = hello_flow.execute(message="hello from integration test")
+
+    assert result.status == "completed"
+    assert result.output is not None, "completed run returned no output"
+    assert result.output == result.result  # .output is an alias for .result
+
+
+@pytest.mark.integration
 def test_execute_with_parameters(hello_flow: Flow) -> None:
     """Extra parameters dict is forwarded to the server without raising."""
     result = hello_flow.execute(
@@ -81,3 +95,13 @@ async def test_async_execute(async_hello_flow: AsyncFlow) -> None:
     assert result.execution_id != ""
     assert result.flow_id is not None
     assert result.block_count >= 1
+
+
+@pytest.mark.integration
+async def test_async_execute_output_is_available(async_hello_flow: AsyncFlow) -> None:
+    """AsyncFlow.execute() surfaces the flow output on ``.output`` (=``.result``)."""
+    result = await async_hello_flow.execute(message="async hello from integration test")
+
+    assert result.status == "completed"
+    assert result.output is not None, "completed run returned no output"
+    assert result.output == result.result

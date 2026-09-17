@@ -172,7 +172,8 @@ def test_sync_execute_emits_client_span(tracing: tuple[InMemorySpanExporter, Any
     assert span.attributes["noukai.org"] == "acme"
     assert span.attributes["noukai.project"] == "proj"
     assert span.attributes["noukai.flow.slug"] == "grade"
-    assert span.attributes["noukai.flow.version"] == "draft"
+    # Default version is now "production" (design 20260917-SDK-version-production-routing).
+    assert span.attributes["noukai.flow.version"] == "production"
     assert span.attributes["noukai.execution_id"] == "exec-123"
     assert span.attributes["noukai.flow.status"] == "completed"
 

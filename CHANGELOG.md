@@ -6,6 +6,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-09-17
+
+### Changed
+
+- **`version` now maps to the server's real path-based version routing** (design
+  `20260917-SDK-version-production-routing`). The SDK previously assumed the
+  base path meant "draft" and that `version="production"` required unshipped
+  "body-field routing." Neither was true — the server routes by URL path:
+  base = **production**, `/v0` = **draft**, `/vN` = version N. The mapping is now:
+  - `version="production"` → base path (production; the server falls back to the
+    live draft when the flow has no published version).
+  - `version="draft"` → `/v0` (the live working copy).
+  - `version=<N>` → `/vN` (published version N).
+  - **The default when `version` is omitted is now `"production"`** (was
+    `"draft"`). This is **behavior-preserving**: every prior call already sent the
+    base path, which the server has always resolved to production. Only the
+    *name* of the default changed.
+  - `version="draft"` (and the equivalent `version=0`) is **rejected by
+    `steps()`/`events()`** with a clear error — the server does not support
+    step-through on draft (`/v0/step` returns 400).
+  - A negative `version` int now raises a clear `ValueError`.
+  - ⚠️ **Migration:** if you explicitly passed `version="draft"`, you were
+    previously reaching the base path (production); it now runs the actual draft
+    (`/v0`). Pass `version="production"` (or omit `version`) to keep production.
+
+### Fixed
+
+- **`version="production"` no longer raises `NotImplementedError`.** It now
+  executes against the production version.
+- **There is now a way to reach the actual draft — pass `version="draft"` (`/v0`).**
+  Previously `"draft"` mapped to the base path, which the server resolves to
+  production, so there was no way to run the live working copy at all.
+
 ## [0.5.0] — 2026-09-16
 
 ### Added
