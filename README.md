@@ -659,6 +659,45 @@ client = Noukai(log_handler=log_handler, log_payloads=True)
 
 The hook fires on every request, response, and retry attempt. `request_body` and `response_body` are omitted unless `log_payloads=True` — off by default to protect PII and credentials.
 
+## OpenTelemetry (opt-in)
+
+The SDK can emit an [OpenTelemetry](https://opentelemetry.io/) span for each flow call into **your own** OTel backend (Datadog, Honeycomb, Jaeger, any OTLP collector) — so a Noukai call shows up on your traces next to your DB queries and HTTP calls. It is **off by default** and a true no-op when off (the SDK never imports OpenTelemetry unless you opt in).
+
+Install the extra and turn it on with `otel=True`:
+
+```bash
+pip install "noukai-sdk[otel]"
+```
+
+```python
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+
+# 1. Configure your OTel provider/exporter once, at app startup (your choice of backend).
+provider = TracerProvider()
+provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+trace.set_tracer_provider(provider)
+
+# 2. Opt the client in. Spans flow into the provider you configured above.
+from noukai_sdk import Noukai
+
+client = Noukai(api_key="nk_...", org="acme", project="spelling", otel=True)
+result = client.flow("grade-3").execute(message="hello")   # → span "noukai.flow.execute"
+```
+
+Each `execute()` / `execute_async()` call produces one span of kind `CLIENT`:
+
+| Span name | `noukai.flow.execute` · `noukai.flow.execute_async` |
+|---|---|
+| Attributes | `noukai.org`, `noukai.project`, `noukai.flow.slug`, `noukai.flow.version`, `noukai.execution_id`, `noukai.flow.status` |
+| On error | records the exception and sets the span status to `ERROR` (the exception still propagates) |
+
+Pass your own tracer instead of the global provider with `Noukai(..., otel=True, tracer=my_tracer)`.
+
+> Per-step child spans (synthesized from `run.trace()`) and W3C `traceparent` propagation are planned follow-ups; `steps()` / `events()` streaming calls are not yet span-wrapped. Today's scope is the parent span on `execute` / `execute_async`.
+
 ## Resource management
 
 The client holds an HTTP connection pool. Release it explicitly when you're done:

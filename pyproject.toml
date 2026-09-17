@@ -33,6 +33,10 @@ dependencies = [
 # framework (FastAPI) so installing it gets you a working environment.
 fastapi = ["fastapi>=0.111", "starlette>=0.36"]
 flask = ["flask>=3.0"]
+# Customer-side OpenTelemetry (opt-in). The SDK imports only opentelemetry-api,
+# and only when the client is built with otel=True (design
+# 20260916-SDK-otel-and-replay-rename). The caller brings their own SDK/exporter.
+otel = ["opentelemetry-api>=1.20"]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
@@ -48,6 +52,9 @@ dev = [
     "starlette>=0.37",
     "flask>=3.0",
     "anyio[trio]>=4.0",
+    # OTel: the SDK (pulls opentelemetry-api transitively) gives tests the
+    # in-memory span exporter to assert emitted spans.
+    "opentelemetry-sdk>=1.20",
 ]
 
 [project.urls]
