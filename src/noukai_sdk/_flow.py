@@ -6,6 +6,7 @@ from __future__ import annotations
 import functools
 import inspect
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from contextlib import suppress
 from typing import TYPE_CHECKING, Any, Literal, TypeVar, cast
 
 from ._constants import DEFAULT_MAX_TOOL_ROUNDS, HEADER_SESSION_ID
@@ -73,13 +74,40 @@ def _span_execute_sync(op: str) -> Callable[[_FlowMethod], _FlowMethod]:
                 op, org=self._org, project=self._project, slug=self._slug, version=str(version)
             ) as span:
                 result = fn(self, *args, **kwargs)
-                span.set_execution_id(getattr(result, "execution_id", None))
-                span.set_status(getattr(result, "status", None))
+                execution_id = getattr(result, "execution_id", None)
+                status = getattr(result, "status", None)
+                span.set_execution_id(execution_id)
+                span.set_status(status)
+                if (
+                    factory.step_spans_enabled
+                    and execution_id
+                    and status in ("completed", "failed")
+                ):
+                    _emit_step_spans_sync(self, span, execution_id)
                 return result
 
         return cast(_FlowMethod, wrapper)
 
     return deco
+
+
+def _emit_step_spans_sync(flow: Any, span: Any, execution_id: str) -> None:
+    """Fetch the completed run's trace and add one backdated child span per
+    block. Best-effort — a trace-fetch failure must never break the call.
+
+    Only reached for a ``completed``/``failed`` ``execute`` (the caller's guard);
+    ``execute_async`` returns a ``Job`` handle with no terminal status, so it is
+    naturally excluded."""
+    with suppress(Exception):
+        trace = flow.run(execution_id).trace()
+        span.emit_step_spans(trace.steps)
+
+
+async def _emit_step_spans_async(flow: Any, span: Any, execution_id: str) -> None:
+    """Async mirror of :func:`_emit_step_spans_sync`."""
+    with suppress(Exception):
+        trace = await flow.run(execution_id).trace()
+        span.emit_step_spans(trace.steps)
 
 
 def _span_execute_async(op: str) -> Callable[[_FlowMethod], _FlowMethod]:
@@ -94,8 +122,16 @@ def _span_execute_async(op: str) -> Callable[[_FlowMethod], _FlowMethod]:
                 op, org=self._org, project=self._project, slug=self._slug, version=str(version)
             ) as span:
                 result = await fn(self, *args, **kwargs)
-                span.set_execution_id(getattr(result, "execution_id", None))
-                span.set_status(getattr(result, "status", None))
+                execution_id = getattr(result, "execution_id", None)
+                status = getattr(result, "status", None)
+                span.set_execution_id(execution_id)
+                span.set_status(status)
+                if (
+                    factory.step_spans_enabled
+                    and execution_id
+                    and status in ("completed", "failed")
+                ):
+                    await _emit_step_spans_async(self, span, execution_id)
                 return result
 
         return cast(_FlowMethod, wrapper)

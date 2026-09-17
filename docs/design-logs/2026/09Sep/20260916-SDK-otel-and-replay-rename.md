@@ -19,7 +19,7 @@ Two independent changes ship together as one coordinated release (`0.5.0`), beca
 
 2. **Rename the misnamed replay scope `trace*` → `replay*`.** The capture/replay scope is confusingly named `trace`, colliding with two *correctly*-named neighbours: the execution-trace API (`run.trace()` → `StepTrace[]`, which OTel is built on) and the `trace: bool` snapshot-capture param. We hard-rename the scope only: `trace`→`replay`, `trace_scope`→`replay_scope`, `trace_scope_sync`→`replay_scope_sync` (Python); `traceScope`→`replayScope`, `TraceScopeOptions`→`ReplayScopeOptions` (TS). Breaking; migration note + CHANGELOG in both.
 
-Deferred to a follow-on **PR-C** (explicitly out of v1, documented below): per-step child spans reconstructed from `run.trace()`, and W3C `traceparent` header injection for a future server-side continuation.
+**PR-C** adds **per-pipeline-block child spans** (reconstructed from `run.trace()`, opt-in via `otel_steps`, with each block's data/results gated behind `otel_step_payloads`). Still deferred: W3C `traceparent` header injection, and spans on the streaming `steps()` / `events()` calls.
 
 ---
 
@@ -71,16 +71,17 @@ Both SDKs already have a **logging hook** — Python `Noukai(log_handler=fn, log
 ## Goals / Non-goals
 
 **Goals**
-1. One **opt-in** parent CLIENT span per `execute` / `execute_async` call, emitted into the caller's OTel provider, following OTel semantic conventions (span kind CLIENT; `gen_ai.*` reserved for the deferred per-step spans). Streaming `steps()` / `events()` calls are **not** span-wrapped in v1 (see Non-goals).
+1. One **opt-in** parent CLIENT span per `execute` / `execute_async` call (and, via `otel_steps`, one INTERNAL child span per pipeline block), emitted into the caller's OTel provider, following OTel semantic conventions (span kind CLIENT / INTERNAL; `gen_ai.*` for per-block model/token usage). Streaming `steps()` / `events()` calls are **not** span-wrapped (see Non-goals).
 2. **True no-op when off:** default `otel=False` never imports `opentelemetry`; no measurable overhead; no hard dependency added to either SDK.
 3. **Hard-rename** the replay scope `trace*`→`replay*` in both SDKs, mirrored, with migration notes.
 4. **Re-sync parity** — both repos to `0.5.0`, `check_parity.py` green.
 5. Preserve every existing behavior: logging hook, replay/capture, tool-call resume, sync/async parity — all unchanged.
 
-**Non-goals (v1 — deferred to PR-C, documented not built)**
-- **Per-step child spans** reconstructed from `run.trace()` `StepTrace[]` using backdated start/end timestamps (nested under the parent, one span per step, `gen_ai.*` + cost attributes). Requires the run to be complete → an extra `GET …/trace` for the sync path. Designed below; built when prioritized.
+**Non-goals (deferred, documented not built)**
 - **W3C `traceparent` injection** into the outbound execute request for a future server-side continuation. Cheap and flag-gated, but no server consumer exists yet.
-- **Spans on the streaming `steps()` / `events()` calls.** Correctly bounding a span across a caller-driven, lazily-consumed iterator (open on first pull; close on exhaustion / early-break / error without disturbing the SSE-stream teardown) shares the same span-lifetime machinery as the per-step children, so it is deferred with them to PR-C. v1 spans only the request-based `execute` / `execute_async` entry points.
+- **Spans on the streaming `steps()` / `events()` calls.** Correctly bounding a span across a caller-driven, lazily-consumed iterator (open on first pull; close on exhaustion / early-break / error without disturbing the SSE-stream teardown) is materially harder than the single-shot `execute` / `execute_async` calls. Deferred — the request-based entry points (and their per-block children via `otel_steps`) are spanned; the streaming ones are not.
+
+*(Per-pipeline-block child spans were originally listed here as deferred; they landed in **PR-C** — see the deliverables + span model below.)*
 - **Renaming the `trace: bool` execute param** (e.g. to `capture=`/`snapshot=`). It's a server wire-field name; changing it is a separate wire-adjacent decision. Flagged for a future design.
 - No server-side OTel, no Tempo, no dependency on Noukai-server tracing.
 - No deprecation-alias shim for the rename (hard rename — decided).
@@ -168,7 +169,24 @@ import { traceScope, type TraceScopeOptions }                 →   replayScope,
 | Docs | README `## OpenTelemetry` H2 with a runnable Jaeger/OTLP example; CHANGELOG **Added** | mirror |
 | Tests | span emitted on/off, attributes, error status, no-import-when-off, missing-extra error | mirror with a vitest in-memory span exporter / fake tracer |
 
-**Deferred (PR-C, documented, not built):** per-step child spans from `run.trace()` (backdated `start_time`/`end_time` from `StepTrace.started_at`/`completed_at`; attributes `gen_ai.request.model`=`model_used`, `gen_ai.usage.input_tokens`/`output_tokens`=`tokens.prompt`/`completion`, `noukai.step.cost_usd`=`cost_usd`, `noukai.step.id`/`status`); `traceparent` injection via `extra_headers` behind a `propagate_context=True` flag; **and spans on the streaming `steps()` / `events()` calls** (their caller-driven-iterator span lifetime shares the per-step machinery — shipping a fragile streaming span in PR-B was rejected in favour of deferring it here).
+### PR-C — Per-pipeline-block child spans (opt-in `otel_steps`)
+
+After a completed `execute`, fetch `run.trace()` and synthesize one **backdated INTERNAL child span per block**, nested under the call span. Two new client flags gate it (separate from `otel`, which stays one span with no extra network): `otel_steps` / `otelSteps` (child spans, one extra `run.trace()` GET per call) and `otel_step_payloads` / `otelStepPayloads` (also attach each block's input/output data — off by default, PII-sensitive, size-bounded).
+
+| | Python | TypeScript |
+|---|---|---|
+| Client flags | `Noukai(..., otel_steps=False, otel_step_payloads=False)` | `NoukaiOptions.otelSteps?`, `otelStepPayloads?` |
+| Span factory | `SpanFactory.step_spans_enabled`; `FlowSpan.emit_step_spans(steps)` | `SpanFactory.stepSpansEnabled`; `FlowSpan.emitStepSpans(steps)` |
+| Fetch + emit | the `execute` decorator fetches `flow.run(eid).trace()` when `status in {completed, failed}`, best-effort (swallowed) | `flow.ts` `tagFlowSpan` does the same in the `flowSpan` callback |
+| Backdating | `start_time`/`end_time` = `StepTrace.started_at`/`completed_at` → epoch **ns** | `startTime`/`endTime` = epoch **ms** (`Date.parse`); child parented **explicitly** (JS needs no registered ContextManager) |
+| Attrs (always) | `noukai.step.id`/`attempt`/`status`/`duration_ms`/`loop_index`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`/`output_tokens`, `noukai.step.cost_usd`; `failed` → span ERROR | mirror |
+| Attrs (payloads) | `noukai.step.input`/`output`/`error` = bounded JSON (≤4096 chars) of `input_context`/`output_context`/`error_context` (error only on failed blocks) | mirror (`inputContext`/`outputContext`/`errorContext`) |
+| Tests | unit (child-per-block, backdating, nesting, no-fetch-when-off, swallow-on-failure, payloads, helpers) + gated integration (`tests/integration/test_otel.py`) | mirror + `tests/integration/otel.integration.test.ts` |
+| Docs | README `### Per-block spans`; CHANGELOG **Added** | mirror |
+
+**Server prerequisite:** per-block spans need the slug-scoped `GET /seq/.../runs/{id}/trace` endpoint accepting `nk_*` keys (the same prereq `test_run_proxy.py` is xfail on). Until it deploys, the best-effort fetch is swallowed (parent span still emitted); the integration step-span test is xfail (Py) / env-gated (TS) and auto-runs once deployed.
+
+**Still deferred:** `traceparent` injection via `extra_headers` behind a `propagate_context=True` flag; and spans on the streaming `steps()` / `events()` calls.
 
 ---
 
@@ -205,12 +223,13 @@ Per repo, all existing suites stay green plus:
 ## Decisions made
 
 1. **Hard rename, no deprecation alias.** Alpha SDKs, small surface; an alias shim would add code + tests for a name nobody should keep. One clean break at `0.5.0`.
-2. **OTel v1 = parent CLIENT span on `execute` / `execute_async` only.** Highest value (end-to-end latency + status in the caller's stack), lowest risk, no extra network. Per-step spans, `traceparent`, and spans on the streaming `steps()` / `events()` calls are designed but deferred to PR-C.
+2. **OTel core (PR-B) = parent CLIENT span on `execute` / `execute_async`; per-block child spans (PR-C) are a separate opt-in.** The parent span is highest-value / lowest-risk with no extra network; per-block spans cost a `run.trace()` GET, so they sit behind their own `otel_steps` flag. `traceparent` and streaming `steps()` / `events()` spans remain deferred.
 3. **Opt-in via `otel=True` client flag**, acquiring a named tracer from the caller's global provider; `tracer=` overrides. Default off ⇒ never imports OTel. Chosen over "auto-detect a global provider" (weaker consent, harder to keep a true no-op) and over "always require an explicit tracer" (more verbose at the call site).
 4. **Both repos → `0.5.0`**, re-syncing the current `0.4.0`/`0.4.1` drift and signalling the breaking rename per pre-1.0 convention.
 5. **This is customer-side OTel only** — it does not reverse the server-side "no traces" decision (`20260706-BE-grafana-observability`); it is the v1.x client follow-through the original SDK briefs anticipated.
 6. **`trace: bool` execute param left as-is** (server wire-field name); a future rename to `capture=` is flagged, not done here.
 7. **Two accepted Python↔TS divergences.** (a) *Dependency resolution:* Python fails fast at client construction (`otel=True` without the extra raises immediately — a sync import); TS resolves `@opentelemetry/api` lazily on the first traced call (ESM dynamic import is async), so a missing peer dep surfaces there. (b) *Client-side validation errors:* Python decorates the whole `execute` method, so an invalid-argument call (both `message`+`messages`, `version="production"`, an async handler on the sync client) produces an ERROR `noukai.flow.execute` span; TS runs the same validators *before* opening the span, so it emits none. Both are error paths in the caller's own trust domain and do not change the span shape for real calls.
+8. **Per-block spans are a separate opt-in with PII-safe payloads (PR-C).** `otel_steps` is distinct from `otel` because it adds a `run.trace()` GET — plain `otel=True` stays single-span, zero-extra-network. Block input/output **data** is gated behind a further `otel_step_payloads` flag (default off) and size-bounded (≤4096 chars), mirroring the SDK's existing `log_payloads=False` PII-safe default; child-span metadata (model, tokens, cost, duration, status) is always safe and always attached. The trace fetch is best-effort (swallowed) so it can never break the user's call.
 
 ---
 

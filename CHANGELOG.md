@@ -19,8 +19,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a **true no-op** when off (the SDK never imports `opentelemetry` unless opted
   in). Requires the new `[otel]` extra (`pip install noukai-sdk[otel]`, depends
   on `opentelemetry-api` only). Pass a custom tracer with `tracer=` to override
-  the global provider. Per-step child spans, `traceparent` propagation, and
-  `steps()`/`events()` streaming spans are deferred follow-ups.
+  the global provider.
+- **Per-pipeline-block child spans** (opt-in). `Noukai(..., otel_steps=True)`
+  additionally fetches `run.trace()` after a completed `execute` and emits one
+  backdated child span per block, nested under the call span, carrying
+  `gen_ai.request.model`, `gen_ai.usage.input_tokens`/`output_tokens`,
+  `noukai.step.cost_usd`/`id`/`status`/`duration_ms`. `otel_step_payloads=True`
+  additionally attaches each block's **input data and output results** (plus the
+  error context for failed blocks) — size-bounded; off by default (may contain
+  PII). The trace fetch is best-effort, so a fetch failure never breaks the
+  call. `traceparent`
+  propagation and spans on the streaming `steps()`/`events()` calls remain
+  deferred follow-ups.
 
 ### Changed
 
