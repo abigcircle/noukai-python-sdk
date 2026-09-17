@@ -135,6 +135,8 @@ def _build_sync_transport(
     session_id: str | None = None,
     otel: bool = False,
     tracer: Any | None = None,
+    otel_steps: bool = False,
+    otel_step_payloads: bool = False,
 ) -> SyncTransport:
     """Resolve env vars, validate key, and construct SyncTransport."""
     resolved_key, resolved_url = _resolve_credentials(api_key, env)
@@ -146,7 +148,12 @@ def _build_sync_transport(
         log_handler=log_handler,
         log_payloads=log_payloads,
         default_session_id=session_id,
-        span_factory=get_flow_tracer(otel, tracer),
+        span_factory=get_flow_tracer(
+            otel or otel_steps or otel_step_payloads,
+            tracer,
+            step_spans=otel_steps or otel_step_payloads,
+            step_payloads=otel_step_payloads,
+        ),
     )
 
 
@@ -160,6 +167,8 @@ def _build_async_transport(
     session_id: str | None = None,
     otel: bool = False,
     tracer: Any | None = None,
+    otel_steps: bool = False,
+    otel_step_payloads: bool = False,
 ) -> AsyncTransport:
     """Resolve env vars, validate key, and construct AsyncTransport."""
     resolved_key, resolved_url = _resolve_credentials(api_key, env)
@@ -171,7 +180,12 @@ def _build_async_transport(
         log_handler=log_handler,
         log_payloads=log_payloads,
         default_session_id=session_id,
-        span_factory=get_flow_tracer(otel, tracer),
+        span_factory=get_flow_tracer(
+            otel or otel_steps or otel_step_payloads,
+            tracer,
+            step_spans=otel_steps or otel_step_payloads,
+            step_payloads=otel_step_payloads,
+        ),
     )
 
 
@@ -213,6 +227,13 @@ class Noukai:
             that never imports ``opentelemetry``.
         tracer: Optional explicit OpenTelemetry ``Tracer`` to use instead of
             the globally configured provider. Only consulted when ``otel=True``.
+        otel_steps: When True (implies ``otel``), also fetch ``run.trace()``
+            after a completed ``execute`` and emit one child span per pipeline
+            block — model, token usage, cost, duration, status — backdated and
+            nested under the call span. Adds a ``run.trace()`` GET per traced call.
+        otel_step_payloads: When True (implies ``otel_steps``), each block child
+            span also carries a size-bounded copy of the block's input data and
+            output results. Off by default — this can contain PII.
 
     Example:
         >>> with Noukai(org="acme", project="spelling") as client:
@@ -233,13 +254,25 @@ class Noukai:
         log_payloads: bool = False,
         otel: bool = False,  # NEW — design 20260916-SDK-otel-and-replay-rename
         tracer: object | None = None,
+        otel_steps: bool = False,
+        otel_step_payloads: bool = False,
     ) -> None:
         _validate_org_project(org, project)
         self.default_org = org
         self.default_project = project
         self._default_session_id = session_id
         self._transport = _build_sync_transport(
-            api_key, env, timeout, max_retries, log_handler, log_payloads, session_id, otel, tracer
+            api_key,
+            env,
+            timeout,
+            max_retries,
+            log_handler,
+            log_payloads,
+            session_id,
+            otel,
+            tracer,
+            otel_steps,
+            otel_step_payloads,
         )
 
     def flow(
@@ -335,6 +368,13 @@ class AsyncNoukai:
             that never imports ``opentelemetry``.
         tracer: Optional explicit OpenTelemetry ``Tracer`` to use instead of
             the globally configured provider. Only consulted when ``otel=True``.
+        otel_steps: When True (implies ``otel``), also fetch ``run.trace()``
+            after a completed ``execute`` and emit one child span per pipeline
+            block — model, token usage, cost, duration, status — backdated and
+            nested under the call span. Adds a ``run.trace()`` GET per traced call.
+        otel_step_payloads: When True (implies ``otel_steps``), each block child
+            span also carries a size-bounded copy of the block's input data and
+            output results. Off by default — this can contain PII.
 
     Example:
         >>> async with AsyncNoukai(org="acme", project="spelling") as client:
@@ -355,13 +395,25 @@ class AsyncNoukai:
         log_payloads: bool = False,
         otel: bool = False,  # NEW — design 20260916-SDK-otel-and-replay-rename
         tracer: object | None = None,
+        otel_steps: bool = False,
+        otel_step_payloads: bool = False,
     ) -> None:
         _validate_org_project(org, project)
         self.default_org = org
         self.default_project = project
         self._default_session_id = session_id
         self._transport = _build_async_transport(
-            api_key, env, timeout, max_retries, log_handler, log_payloads, session_id, otel, tracer
+            api_key,
+            env,
+            timeout,
+            max_retries,
+            log_handler,
+            log_payloads,
+            session_id,
+            otel,
+            tracer,
+            otel_steps,
+            otel_step_payloads,
         )
 
     def flow(

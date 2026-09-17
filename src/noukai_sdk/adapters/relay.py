@@ -90,13 +90,34 @@ class _RelayRejection(Exception):
 
 
 def _normalize_version(version: str | int) -> VersionSegment:
-    """Coerce the relay's ``version`` into the ``"draft" | int`` form the path
-    helpers expect. ``"production"`` is rejected (mirrors ``Flow._path_version``)."""
+    """Coerce the relay's ``version`` into the wire segment the path helpers
+    expect (mirrors ``Flow._path_version``):
+
+    - ``"production"`` → ``"production"`` (base path)
+    - ``"draft"``      → ``0`` (→ ``/v0``; the relay forwards to /execute, which
+      supports draft)
+    - ``<int>`` (≥0)   → that integer (→ ``/vN``)
+    """
+    # bool is an int subclass — reject it before the int branch.
+    if isinstance(version, bool):
+        raise ValueError(
+            f"flow relay version must be 'draft', 'production', or a "
+            f"non-negative int, got {version!r}"
+        )
     if isinstance(version, int):
+        if version < 0:
+            raise ValueError(
+                f"flow relay version must be 'draft', 'production', or a "
+                f"non-negative int, got {version!r}"
+            )
         return version
+    if version == "production":
+        return "production"
     if version == "draft":
-        return "draft"
-    raise ValueError(f"flow relay version must be 'draft' or a positive int, got {version!r}")
+        return 0
+    raise ValueError(
+        f"flow relay version must be 'draft', 'production', or a non-negative int, got {version!r}"
+    )
 
 
 def _bound_and_parse(raw: bytes, bounds: RelayBounds) -> dict[str, Any]:
@@ -196,7 +217,7 @@ def mount_flow_relay(
     authorize: Callable[[Any], Awaitable[None]],
     max_body_bytes: int = DEFAULT_MAX_BODY_BYTES,
     max_messages: int = DEFAULT_MAX_MESSAGES,
-    version: str | int = "draft",
+    version: str | int = "production",
 ) -> None:
     """Mount a ``POST {path}`` flow relay on a FastAPI / Starlette ``app``.
 
@@ -221,11 +242,11 @@ def mount_flow_relay(
             256 KiB). Over → ``413 {"detail": "BODY_TOO_LARGE"}``.
         max_messages: Max entries in each of ``messages`` / ``toolCallMessages``
             (default 40). Over → ``413 {"detail": "TOO_MANY_MESSAGES"}``.
-        version: ``"draft"`` (default) or a published int version.
+        version: ``"production"`` (default), ``"draft"``, or a published int version.
 
     Raises:
         ImportError: if Starlette/FastAPI is not installed.
-        ValueError: if ``version`` is not ``"draft"`` or an int.
+        ValueError: if ``version`` is not ``"draft"``, ``"production"``, or a non-negative int.
     """
     try:
         from starlette.requests import Request
@@ -279,7 +300,7 @@ def flow_relay_blueprint(
     path: str = DEFAULT_RELAY_PATH,
     authorize: Callable[[Any], None],
     bounds: RelayBounds | None = None,
-    version: str | int = "draft",
+    version: str | int = "production",
 ) -> Any:
     """Return a Flask ``Blueprint`` exposing ``POST {path}`` as a flow relay.
 
@@ -295,11 +316,11 @@ def flow_relay_blueprint(
             werkzeug ``HTTPException`` (e.g. ``abort(403)``) to reject. Returning
             (any value) is treated as ALLOW — you must raise to deny.
         bounds: Abuse bounds (default :class:`RelayBounds` = 256 KiB / 40).
-        version: ``"draft"`` (default) or a published int version.
+        version: ``"production"`` (default), ``"draft"``, or a published int version.
 
     Raises:
         ImportError: if Flask is not installed.
-        ValueError: if ``version`` is not ``"draft"`` or an int.
+        ValueError: if ``version`` is not ``"draft"``, ``"production"``, or a non-negative int.
     """
     try:
         from flask import Blueprint, jsonify, request

@@ -6,6 +6,7 @@ from __future__ import annotations
 import functools
 import inspect
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from contextlib import suppress
 from typing import TYPE_CHECKING, Any, Literal, TypeVar, cast
 
 from ._constants import DEFAULT_MAX_TOOL_ROUNDS, HEADER_SESSION_ID
@@ -68,18 +69,45 @@ def _span_execute_sync(op: str) -> Callable[[_FlowMethod], _FlowMethod]:
         @functools.wraps(fn)
         def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
             factory = self._transport._span_factory
-            version = kwargs.get("version", "draft")
+            version = kwargs.get("version", "production")
             with factory.flow_span(
                 op, org=self._org, project=self._project, slug=self._slug, version=str(version)
             ) as span:
                 result = fn(self, *args, **kwargs)
-                span.set_execution_id(getattr(result, "execution_id", None))
-                span.set_status(getattr(result, "status", None))
+                execution_id = getattr(result, "execution_id", None)
+                status = getattr(result, "status", None)
+                span.set_execution_id(execution_id)
+                span.set_status(status)
+                if (
+                    factory.step_spans_enabled
+                    and execution_id
+                    and status in ("completed", "failed")
+                ):
+                    _emit_step_spans_sync(self, span, execution_id)
                 return result
 
         return cast(_FlowMethod, wrapper)
 
     return deco
+
+
+def _emit_step_spans_sync(flow: Any, span: Any, execution_id: str) -> None:
+    """Fetch the completed run's trace and add one backdated child span per
+    block. Best-effort — a trace-fetch failure must never break the call.
+
+    Only reached for a ``completed``/``failed`` ``execute`` (the caller's guard);
+    ``execute_async`` returns a ``Job`` handle with no terminal status, so it is
+    naturally excluded."""
+    with suppress(Exception):
+        trace = flow.run(execution_id).trace()
+        span.emit_step_spans(trace.steps)
+
+
+async def _emit_step_spans_async(flow: Any, span: Any, execution_id: str) -> None:
+    """Async mirror of :func:`_emit_step_spans_sync`."""
+    with suppress(Exception):
+        trace = await flow.run(execution_id).trace()
+        span.emit_step_spans(trace.steps)
 
 
 def _span_execute_async(op: str) -> Callable[[_FlowMethod], _FlowMethod]:
@@ -89,13 +117,21 @@ def _span_execute_async(op: str) -> Callable[[_FlowMethod], _FlowMethod]:
         @functools.wraps(fn)
         async def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
             factory = self._transport._span_factory
-            version = kwargs.get("version", "draft")
+            version = kwargs.get("version", "production")
             with factory.flow_span(
                 op, org=self._org, project=self._project, slug=self._slug, version=str(version)
             ) as span:
                 result = await fn(self, *args, **kwargs)
-                span.set_execution_id(getattr(result, "execution_id", None))
-                span.set_status(getattr(result, "status", None))
+                execution_id = getattr(result, "execution_id", None)
+                status = getattr(result, "status", None)
+                span.set_execution_id(execution_id)
+                span.set_status(status)
+                if (
+                    factory.step_spans_enabled
+                    and execution_id
+                    and status in ("completed", "failed")
+                ):
+                    await _emit_step_spans_async(self, span, execution_id)
                 return result
 
         return cast(_FlowMethod, wrapper)
@@ -151,10 +187,9 @@ class Flow:
     def _versioned_path(self, version: VersionSpec) -> str:
         """Build the URL path segment for the given version.
 
-        - ``"draft"``      → ``/seq/{org}/{project}/{slug}``
-        - ``<int>``        → ``/seq/{org}/{project}/{slug}/v{N}``
-        - ``"production"`` → raises ``NotImplementedError`` (server contract
-          not yet finalised; reserved for a future SDK release).
+        - ``"production"`` → ``/seq/{org}/{project}/{slug}``      (base = production)
+        - ``"draft"``      → ``/seq/{org}/{project}/{slug}/v0``   (reserved alias)
+        - ``<int>`` (≥1)   → ``/seq/{org}/{project}/{slug}/v{N}``
 
         Delegates to :func:`_paths.flow_base` so the central audit file
         owns the wire shape.
@@ -162,24 +197,56 @@ class Flow:
         return flow_base(self._org, self._project, self._slug, self._path_version(version))
 
     def _path_version(self, version: VersionSpec) -> str | int:
-        """Normalize a ``VersionSpec`` into the int-or-"draft" form the
-        ``_paths`` helpers expect, validating ``"production"`` up-front.
+        """Coerce a public ``VersionSpec`` into the wire segment the ``_paths``
+        helpers render into a URL. The server routes versions by path:
+
+        - ``"production"`` → ``"production"`` (base path; draft/live fallback if
+          the flow has no published version)
+        - ``"draft"``      → ``0`` (→ ``/v0``, the reserved draft alias)
+        - ``<int>`` (≥0)   → that integer (→ ``/vN``)
+
+        See design 20260917-SDK-version-production-routing.
 
         Raises:
-            NotImplementedError: ``version="production"`` is not yet supported.
-            ValueError: any other unrecognised version.
+            ValueError: a negative integer, or an unrecognised version string.
         """
+        # bool is an int subclass — reject it before the int branch so a stray
+        # version=True/False can't slip through and render "/vTrue" etc.
+        if isinstance(version, bool):
+            raise ValueError(
+                f"Invalid version: {version!r}. "
+                'Expected "draft", "production", or a non-negative integer.'
+            )
         if isinstance(version, int):
+            if version < 0:
+                raise ValueError(
+                    f"Invalid version: {version!r}. Pass a non-negative integer "
+                    '(0 = draft, N = published version), "draft", or "production".'
+                )
             return version
         if version == "draft":
-            return "draft"
+            return 0
         if version == "production":
-            raise NotImplementedError(
-                'flow.execute(version="production") is not yet supported in the SDK. '
-                'Pin to an integer version (e.g. version=3) or use the default "draft". '
-                "A future release will land this once the server contract is finalized."
+            return "production"
+        raise ValueError(
+            f"Invalid version: {version!r}. "
+            'Expected "draft", "production", or a non-negative integer.'
+        )
+
+    def _assert_streamable_version(self, version: VersionSpec) -> None:
+        """Reject the draft version for the step-through (SSE) endpoints.
+
+        The server returns ``400 INVALID_VERSION`` for ``/v0/step`` — draft is
+        not supported for step-through — so we fail fast with a clear message
+        instead of a confusing round-trip. ``"draft"`` and the equivalent
+        integer ``0`` both map to the ``/v0`` segment.
+        """
+        if self._path_version(version) == 0:
+            raise ValueError(
+                "steps()/events() cannot run the draft version: the server does "
+                "not support step-through on draft (v0). Publish a version and "
+                'pass version=<N>, or use the default "production".'
             )
-        raise ValueError(f"Invalid version: {version!r}")
 
     def _resolve_session_id(
         self,
@@ -219,7 +286,7 @@ class Flow:
         tool_handler: ToolHandler | None = None,
         max_tool_rounds: int | None = None,
         trace: bool = False,
-        version: VersionSpec = "draft",
+        version: VersionSpec = "production",
         timeout: float | None = None,
         session_id: str | None = None,  # NEW — see design 20260605-SDK-replay-decorator
     ) -> ExecuteResult | PausedResult:
@@ -253,9 +320,10 @@ class Flow:
                 Defaults to ``DEFAULT_MAX_TOOL_ROUNDS`` (10). Raises
                 ``ToolCallLimitError`` if exceeded.
             trace: When True, capture full input/output snapshots in trace.
-            version: ``"draft"`` (default) or a positive int published version
-                number. ``"production"`` is reserved for a future release and
-                raises ``NotImplementedError`` when passed.
+            version: ``"production"`` (default) runs the flow's production
+                version (the server falls back to the live draft when the flow
+                has no published version); ``"draft"`` forces the live working
+                copy; a positive int pins a specific published version.
             timeout: Per-request timeout override (seconds).
             session_id: Explicit session id override. Precedence (highest first):
                 this kwarg > client-level default > active replay_scope contextvar
@@ -268,7 +336,7 @@ class Flow:
 
         Raises:
             TypeError: if ``tool_handler`` is an async function.
-            NotImplementedError: if ``version="production"`` is passed.
+            ValueError: if ``version`` is a negative int or an unknown string.
             FlowNotFoundError: slug not found.
             InsufficientCreditsError: organisation balance is insufficient.
             FlowExecutionError: server-side execution failure (5xx). Check
@@ -368,7 +436,7 @@ class Flow:
         parameters: dict[str, Any] | None = None,
         block_overrides: dict[str, dict[str, Any]] | None = None,
         trace: bool = False,
-        version: VersionSpec = "draft",
+        version: VersionSpec = "production",
         timeout: float | None = None,
         session_id: str | None = None,  # NEW — see design 20260605-SDK-replay-decorator
     ) -> Job:
@@ -389,8 +457,9 @@ class Flow:
             block_overrides: Per-step config overrides
                 ``{step_id: {field: value}}``.
             trace: When True, capture full input/output snapshots in trace.
-            version: ``"draft"`` (default), ``"production"``, or a positive
-                int published version number.
+            version: ``"production"`` (default) runs the production version;
+                ``"draft"`` the live working copy; a positive int a published
+                version. (``steps()``/``events()`` do not support ``"draft"``.)
             timeout: Per-request timeout override for the submission call
                 (seconds). Does not affect the async execution itself.
 
@@ -454,7 +523,7 @@ class Flow:
         tool_handler: ToolHandler | None = None,
         max_tool_rounds: int | None = None,
         trace: bool = False,
-        version: VersionSpec = "draft",
+        version: VersionSpec = "production",
         session_id: str | None = None,  # NEW — see design 20260605-SDK-replay-decorator
     ) -> Iterator[StepCompleted]:
         """Iterate the flow step by step, yielding one ``StepCompleted`` per
@@ -481,8 +550,9 @@ class Flow:
             max_tool_rounds: Safety bound on the tool-handler loop.
                 Defaults to ``DEFAULT_MAX_TOOL_ROUNDS`` (10).
             trace: When True, capture full input/output snapshots in trace.
-            version: ``"draft"`` (default), ``"production"``, or a positive
-                int published version number.
+            version: ``"production"`` (default) runs the production version;
+                ``"draft"`` the live working copy; a positive int a published
+                version. (``steps()``/``events()`` do not support ``"draft"``.)
 
         Yields:
             ``StepCompleted`` events, one per finished flow step.
@@ -494,6 +564,7 @@ class Flow:
             FlowExecutionError: server-side execution failure.
             ToolCallLimitError: ``max_tool_rounds`` exhausted.
         """
+        self._assert_streamable_version(version)
         # Pass the user-explicit session_id (may be None) — the iterator
         # resolves the effective sid against the scope + client default
         # at request-build time.
@@ -530,7 +601,7 @@ class Flow:
         tool_handler: ToolHandler | None = None,
         max_tool_rounds: int | None = None,
         trace: bool = False,
-        version: VersionSpec = "draft",
+        version: VersionSpec = "production",
         session_id: str | None = None,  # NEW — see design 20260605-SDK-replay-decorator
     ) -> Iterator[StreamEvent]:
         """Iterate every typed SSE event from the step-through stream.
@@ -561,8 +632,9 @@ class Flow:
             max_tool_rounds: Safety bound on the tool-handler loop.
                 Defaults to ``DEFAULT_MAX_TOOL_ROUNDS`` (10).
             trace: When True, capture full input/output snapshots in trace.
-            version: ``"draft"`` (default), ``"production"``, or a positive
-                int published version number.
+            version: ``"production"`` (default) runs the production version;
+                ``"draft"`` the live working copy; a positive int a published
+                version. (``steps()``/``events()`` do not support ``"draft"``.)
 
         Yields:
             ``StreamEvent`` union — all typed SSE events from the stream.
@@ -574,6 +646,7 @@ class Flow:
             FlowExecutionError: server-side execution failure.
             ToolCallLimitError: ``max_tool_rounds`` exhausted.
         """
+        self._assert_streamable_version(version)
         return make_sync_events_iterator(
             self,
             message=message,
@@ -645,10 +718,9 @@ class AsyncFlow:
     def _versioned_path(self, version: VersionSpec) -> str:
         """Build the URL path segment for the given version.
 
-        - ``"draft"``      → ``/seq/{org}/{project}/{slug}``
-        - ``<int>``        → ``/seq/{org}/{project}/{slug}/v{N}``
-        - ``"production"`` → raises ``NotImplementedError`` (server contract
-          not yet finalised; reserved for a future SDK release).
+        - ``"production"`` → ``/seq/{org}/{project}/{slug}``      (base = production)
+        - ``"draft"``      → ``/seq/{org}/{project}/{slug}/v0``   (reserved alias)
+        - ``<int>`` (≥1)   → ``/seq/{org}/{project}/{slug}/v{N}``
 
         Delegates to :func:`_paths.flow_base` so the central audit file
         owns the wire shape.
@@ -656,20 +728,56 @@ class AsyncFlow:
         return flow_base(self._org, self._project, self._slug, self._path_version(version))
 
     def _path_version(self, version: VersionSpec) -> str | int:
-        """Normalize a ``VersionSpec`` into the int-or-"draft" form the
-        ``_paths`` helpers expect, validating ``"production"`` up-front.
+        """Coerce a public ``VersionSpec`` into the wire segment the ``_paths``
+        helpers render into a URL. The server routes versions by path:
+
+        - ``"production"`` → ``"production"`` (base path; draft/live fallback if
+          the flow has no published version)
+        - ``"draft"``      → ``0`` (→ ``/v0``, the reserved draft alias)
+        - ``<int>`` (≥0)   → that integer (→ ``/vN``)
+
+        See design 20260917-SDK-version-production-routing.
+
+        Raises:
+            ValueError: a negative integer, or an unrecognised version string.
         """
+        # bool is an int subclass — reject it before the int branch so a stray
+        # version=True/False can't slip through and render "/vTrue" etc.
+        if isinstance(version, bool):
+            raise ValueError(
+                f"Invalid version: {version!r}. "
+                'Expected "draft", "production", or a non-negative integer.'
+            )
         if isinstance(version, int):
+            if version < 0:
+                raise ValueError(
+                    f"Invalid version: {version!r}. Pass a non-negative integer "
+                    '(0 = draft, N = published version), "draft", or "production".'
+                )
             return version
         if version == "draft":
-            return "draft"
+            return 0
         if version == "production":
-            raise NotImplementedError(
-                'flow.execute(version="production") is not yet supported in the SDK. '
-                'Pin to an integer version (e.g. version=3) or use the default "draft". '
-                "A future release will land this once the server contract is finalized."
+            return "production"
+        raise ValueError(
+            f"Invalid version: {version!r}. "
+            'Expected "draft", "production", or a non-negative integer.'
+        )
+
+    def _assert_streamable_version(self, version: VersionSpec) -> None:
+        """Reject the draft version for the step-through (SSE) endpoints.
+
+        The server returns ``400 INVALID_VERSION`` for ``/v0/step`` — draft is
+        not supported for step-through — so we fail fast with a clear message
+        instead of a confusing round-trip. ``"draft"`` and the equivalent
+        integer ``0`` both map to the ``/v0`` segment.
+        """
+        if self._path_version(version) == 0:
+            raise ValueError(
+                "steps()/events() cannot run the draft version: the server does "
+                "not support step-through on draft (v0). Publish a version and "
+                'pass version=<N>, or use the default "production".'
             )
-        raise ValueError(f"Invalid version: {version!r}")
 
     def _resolve_session_id(
         self,
@@ -709,7 +817,7 @@ class AsyncFlow:
         tool_handler: ToolHandler | AsyncToolHandler | None = None,
         max_tool_rounds: int | None = None,
         trace: bool = False,
-        version: VersionSpec = "draft",
+        version: VersionSpec = "production",
         timeout: float | None = None,
         session_id: str | None = None,  # NEW — see design 20260605-SDK-replay-decorator
     ) -> ExecuteResult | PausedResult:
@@ -732,9 +840,10 @@ class AsyncFlow:
             max_tool_rounds: Safety bound on the tool-handler loop.
                 Defaults to ``DEFAULT_MAX_TOOL_ROUNDS`` (10).
             trace: When True, capture full input/output snapshots in trace.
-            version: ``"draft"`` (default) or a positive int published version
-                number. ``"production"`` is reserved for a future release and
-                raises ``NotImplementedError`` when passed.
+            version: ``"production"`` (default) runs the flow's production
+                version (the server falls back to the live draft when the flow
+                has no published version); ``"draft"`` forces the live working
+                copy; a positive int pins a specific published version.
             timeout: Per-request timeout override (seconds).
 
         Returns:
@@ -742,7 +851,7 @@ class AsyncFlow:
             ``tool_handler`` was omitted and the server paused for tools.
 
         Raises:
-            NotImplementedError: if ``version="production"`` is passed.
+            ValueError: if ``version`` is a negative int or an unknown string.
             FlowNotFoundError: slug not found.
             InsufficientCreditsError: organisation balance is insufficient.
             FlowExecutionError: server-side execution failure.
@@ -832,7 +941,7 @@ class AsyncFlow:
         parameters: dict[str, Any] | None = None,
         block_overrides: dict[str, dict[str, Any]] | None = None,
         trace: bool = False,
-        version: VersionSpec = "draft",
+        version: VersionSpec = "production",
         timeout: float | None = None,
         session_id: str | None = None,  # NEW — see design 20260605-SDK-replay-decorator
     ) -> AsyncJob:
@@ -848,8 +957,9 @@ class AsyncFlow:
             block_overrides: Per-step config overrides
                 ``{step_id: {field: value}}``.
             trace: When True, capture full input/output snapshots in trace.
-            version: ``"draft"`` (default), ``"production"``, or a positive
-                int published version number.
+            version: ``"production"`` (default) runs the production version;
+                ``"draft"`` the live working copy; a positive int a published
+                version. (``steps()``/``events()`` do not support ``"draft"``.)
             timeout: Per-request timeout override for the submission call
                 (seconds).
 
@@ -913,7 +1023,7 @@ class AsyncFlow:
         tool_handler: ToolHandler | AsyncToolHandler | None = None,
         max_tool_rounds: int | None = None,
         trace: bool = False,
-        version: VersionSpec = "draft",
+        version: VersionSpec = "production",
         session_id: str | None = None,  # NEW — see design 20260605-SDK-replay-decorator
     ) -> AsyncIterator[StepCompleted]:
         """Async-iterate the flow step by step, yielding one ``StepCompleted``
@@ -939,8 +1049,9 @@ class AsyncFlow:
             max_tool_rounds: Safety bound on the tool-handler loop.
                 Defaults to ``DEFAULT_MAX_TOOL_ROUNDS`` (10).
             trace: When True, capture full input/output snapshots in trace.
-            version: ``"draft"`` (default), ``"production"``, or a positive
-                int published version number.
+            version: ``"production"`` (default) runs the production version;
+                ``"draft"`` the live working copy; a positive int a published
+                version. (``steps()``/``events()`` do not support ``"draft"``.)
 
         Returns:
             An async iterator yielding ``StepCompleted`` events.
@@ -951,6 +1062,7 @@ class AsyncFlow:
             FlowExecutionError: server-side execution failure.
             ToolCallLimitError: ``max_tool_rounds`` exhausted.
         """
+        self._assert_streamable_version(version)
         # Pass the user-explicit session_id (may be None) — the iterator
         # resolves the effective sid against the scope + client default
         # at request-build time. The iterator filters to only StepCompleted
@@ -988,7 +1100,7 @@ class AsyncFlow:
         tool_handler: ToolHandler | AsyncToolHandler | None = None,
         max_tool_rounds: int | None = None,
         trace: bool = False,
-        version: VersionSpec = "draft",
+        version: VersionSpec = "production",
         session_id: str | None = None,  # NEW — see design 20260605-SDK-replay-decorator
     ) -> AsyncIterator[StreamEvent]:
         """Async-iterate every typed SSE event from the step-through stream.
@@ -1019,8 +1131,9 @@ class AsyncFlow:
             max_tool_rounds: Safety bound on the tool-handler loop.
                 Defaults to ``DEFAULT_MAX_TOOL_ROUNDS`` (10).
             trace: When True, capture full input/output snapshots in trace.
-            version: ``"draft"`` (default), ``"production"``, or a positive
-                int published version number.
+            version: ``"production"`` (default) runs the production version;
+                ``"draft"`` the live working copy; a positive int a published
+                version. (``steps()``/``events()`` do not support ``"draft"``.)
 
         Returns:
             An async iterator yielding ``StreamEvent`` union events.
@@ -1031,6 +1144,7 @@ class AsyncFlow:
             FlowExecutionError: server-side execution failure.
             ToolCallLimitError: ``max_tool_rounds`` exhausted.
         """
+        self._assert_streamable_version(version)
         return make_events_iterator(
             self,
             message=message,

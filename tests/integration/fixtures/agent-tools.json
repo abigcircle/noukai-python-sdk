@@ -26,6 +26,6 @@
       }
     }
   ],
-  "authoring": "Authored via noukai-mcp: create_agent(kind=chat, slug='agent-tools', system_prompt/goal/constraints forcing a get_weather call), then update_block_config(processor_config={tools_enabled: true, files: {...}}) to enable tool-calling on the block while preserving the composed prompt. The SDK calls the DRAFT version by default (flow.execute/relay default version='draft'), so no publish step is required.",
+  "authoring": "Authored via noukai-mcp: create_agent(kind=chat, slug='agent-tools', system_prompt/goal/constraints forcing a get_weather call), then update_block_config(processor_config={tools_enabled: true, files: {...}}) to enable tool-calling on the block while preserving the composed prompt. The SDK defaults to version='production', which the server resolves to the live draft when the flow has no published version, so no publish step is required.",
   "env_var": "NOUKAI_INTEGRATION_AGENT_SLUG"
 }
