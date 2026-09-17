@@ -159,7 +159,7 @@ class TestCaptureMode:
     async def test_1_single_execute_call(self):
         """Decorator generates a fresh session_id; current_session_id() returns
         the value during the call; outbound request carries the header."""
-        from noukai_sdk import current_session_id, trace_scope
+        from noukai_sdk import current_session_id, replay_scope
 
         captured: dict[str, Any] = {}
 
@@ -168,7 +168,7 @@ class TestCaptureMode:
             return ok_execute_response()
 
         client = make_client_with_handler(handler)
-        async with trace_scope() as scope:
+        async with replay_scope() as scope:
             inside_id = current_session_id()
             assert inside_id is not None
             assert scope.session_id == inside_id
@@ -181,7 +181,7 @@ class TestCaptureMode:
 
     @pytest.mark.asyncio
     async def test_2_multiple_execute_calls_share_session_id(self):
-        from noukai_sdk import trace_scope
+        from noukai_sdk import replay_scope
 
         captured: list[dict[str, str]] = []
 
@@ -190,7 +190,7 @@ class TestCaptureMode:
             return ok_execute_response()
 
         client = make_client_with_handler(handler)
-        async with trace_scope():
+        async with replay_scope():
             await client.flow("a/b/c").execute(message="1")
             await client.flow("a/b/c").execute(message="2")
             await client.flow("a/b/d").execute(message="3")
@@ -203,7 +203,7 @@ class TestCaptureMode:
     @pytest.mark.asyncio
     async def test_3_nested_function_propagates_contextvar(self):
         """Contextvar propagates through deeper async calls."""
-        from noukai_sdk import trace_scope
+        from noukai_sdk import replay_scope
 
         captured: dict[str, str] = {}
 
@@ -216,7 +216,7 @@ class TestCaptureMode:
         async def deeper() -> None:
             await client.flow("a/b/c").execute(message="hi")
 
-        async with trace_scope() as scope:
+        async with replay_scope() as scope:
             await deeper()
             assert captured[HEADER_SESSION_ID] == scope.session_id
         await client.aclose()
@@ -225,7 +225,7 @@ class TestCaptureMode:
     async def test_4_step_through_flow_shares_session_id(self):
         """First /step call creates execution under session; subsequent
         /step calls share both execution_id and session_id."""
-        from noukai_sdk import trace_scope
+        from noukai_sdk import replay_scope
 
         captured: list[dict[str, Any]] = []
 
@@ -248,7 +248,7 @@ class TestCaptureMode:
             )
 
         client = make_client_with_handler(handler)
-        async with trace_scope() as scope:
+        async with replay_scope() as scope:
             async for _ in client.flow("a/b/c").events(message="hi"):
                 pass
         await client.aclose()
@@ -259,7 +259,7 @@ class TestCaptureMode:
     @pytest.mark.asyncio
     async def test_5_mixed_execute_and_step_in_same_scope(self):
         """All requests share session_id even when crossing execute/step modes."""
-        from noukai_sdk import trace_scope
+        from noukai_sdk import replay_scope
 
         captured: list[str] = []
 
@@ -274,7 +274,7 @@ class TestCaptureMode:
             )
 
         client = make_client_with_handler(handler)
-        async with trace_scope() as scope:
+        async with replay_scope() as scope:
             await client.flow("a/b/c").execute(message="hi")
             async for _ in client.flow("a/b/c").events(message="hi2"):
                 pass
@@ -298,7 +298,7 @@ class TestCaptureMode:
     @pytest.mark.asyncio
     async def test_7_explicit_kwarg_overrides_contextvar(self):
         """session_id kwarg wins over scope-generated session_id."""
-        from noukai_sdk import trace_scope
+        from noukai_sdk import replay_scope
 
         captured: dict[str, str] = {}
 
@@ -307,7 +307,7 @@ class TestCaptureMode:
             return ok_execute_response()
 
         client = make_client_with_handler(handler)
-        async with trace_scope() as scope:
+        async with replay_scope() as scope:
             await client.flow("a/b/c").execute(message="hi", session_id="explicit-sid")
         await client.aclose()
         assert captured[HEADER_SESSION_ID] == "explicit-sid"
@@ -325,7 +325,7 @@ class TestCaptureMode:
     @pytest.mark.asyncio
     async def test_log_handler_receives_scope_open_close(self):
         """Log handler observes scope_open and scope_close events."""
-        from noukai_sdk import trace_scope
+        from noukai_sdk import replay_scope
 
         events: list[dict] = []
 
@@ -337,7 +337,7 @@ class TestCaptureMode:
             transport=httpx.MockTransport(handler),
             base_url=client._transport._base_url,
         )
-        async with trace_scope(transport=client._transport) as scope:
+        async with replay_scope(transport=client._transport) as scope:
             await client.flow("a/b/c").execute(message="hi")
         await client.aclose()
 
@@ -350,13 +350,13 @@ class TestCaptureMode:
     @pytest.mark.asyncio
     async def test_execute_result_carries_session_id(self):
         """ExecuteResult.session_id == scope.session_id inside a trace scope."""
-        from noukai_sdk import trace_scope
+        from noukai_sdk import replay_scope
 
         def handler(request: httpx.Request) -> httpx.Response:
             return ok_execute_response()
 
         client = make_client_with_handler(handler)
-        async with trace_scope() as scope:
+        async with replay_scope() as scope:
             result = await client.flow("a/b/c").execute(message="hi")
         assert result.session_id == scope.session_id
 
@@ -377,7 +377,7 @@ class TestReplayMode:
     @pytest.mark.asyncio
     async def test_9_single_execute_serves_recorded_output(self):
         """No outbound /execute call — only the GET /sessions/{id} prefetch."""
-        from noukai_sdk import trace_scope
+        from noukai_sdk import replay_scope
 
         outbound_paths: list[str] = []
 
@@ -392,7 +392,7 @@ class TestReplayMode:
 
         client = make_client_with_handler(handler)
         with replay_enabled():
-            async with trace_scope(
+            async with replay_scope(
                 replay_session_id="11111111-1111-4111-8111-111111111111",
                 transport=client._transport,
             ):
@@ -405,7 +405,7 @@ class TestReplayMode:
     @pytest.mark.asyncio
     async def test_10_slug_positional_for_same_slug(self):
         """Two execute(A) → first code call gets first recorded A, second gets second A."""
-        from noukai_sdk import trace_scope
+        from noukai_sdk import replay_scope
 
         execs = [
             session_execution(execution_id="r-1", result={"n": 1}),
@@ -419,7 +419,7 @@ class TestReplayMode:
 
         client = make_client_with_handler(handler)
         with replay_enabled():
-            async with trace_scope(
+            async with replay_scope(
                 replay_session_id="11111111-1111-4111-8111-111111111111",
                 transport=client._transport,
             ):
@@ -432,7 +432,7 @@ class TestReplayMode:
     @pytest.mark.asyncio
     async def test_11_independent_counters_per_slug(self):
         """execute(A), execute(B), execute(A) → matches A1, B1, A2."""
-        from noukai_sdk import trace_scope
+        from noukai_sdk import replay_scope
 
         execs = [
             session_execution(execution_id="A1", slug="A", result={"x": "A1"}),
@@ -447,7 +447,7 @@ class TestReplayMode:
 
         client = make_client_with_handler(handler)
         with replay_enabled():
-            async with trace_scope(
+            async with replay_scope(
                 replay_session_id="11111111-1111-4111-8111-111111111111",
                 transport=client._transport,
             ):
@@ -464,7 +464,7 @@ class TestReplayMode:
         """First step call (exec_id=None) matched by slug-positional; SDK
         substitutes recorded execution_id; subsequent steps match by exact
         (execution_id, step_index)."""
-        from noukai_sdk import trace_scope
+        from noukai_sdk import replay_scope
 
         recorded_exec_id = "rec-step-exec"
         execs = [
@@ -506,7 +506,7 @@ class TestReplayMode:
 
         client = make_client_with_handler(handler)
         with replay_enabled():
-            async with trace_scope(
+            async with replay_scope(
                 replay_session_id="11111111-1111-4111-8111-111111111111",
                 transport=client._transport,
             ):
@@ -527,7 +527,7 @@ class TestReplayMode:
         per flow, then exact match per recorded execution_id."""
         import asyncio
 
-        from noukai_sdk import trace_scope
+        from noukai_sdk import replay_scope
 
         execs = [
             session_execution(
@@ -583,7 +583,7 @@ class TestReplayMode:
             return results
 
         with replay_enabled():
-            async with trace_scope(
+            async with replay_scope(
                 replay_session_id="11111111-1111-4111-8111-111111111111",
                 transport=client._transport,
             ):
@@ -595,7 +595,7 @@ class TestReplayMode:
     @pytest.mark.asyncio
     async def test_14_recorded_error_is_reraised(self):
         """A recorded error_snapshot triggers a re-raise of the same error type."""
-        from noukai_sdk import FlowExecutionError, trace_scope
+        from noukai_sdk import FlowExecutionError, replay_scope
 
         execs = [
             session_execution(
@@ -612,7 +612,7 @@ class TestReplayMode:
 
         client = make_client_with_handler(handler)
         with replay_enabled():
-            async with trace_scope(
+            async with replay_scope(
                 replay_session_id="11111111-1111-4111-8111-111111111111",
                 transport=client._transport,
             ):
@@ -631,7 +631,7 @@ class TestReplayMode:
         require the full ``org/project/slug`` prefix, masking the real
         backend's bare-slug + nullable-slug behavior.
         """
-        from noukai_sdk import trace_scope
+        from noukai_sdk import replay_scope
 
         execs = [
             {
@@ -661,7 +661,7 @@ class TestReplayMode:
             replay_enabled(),
             pytest.raises((ReplayMissError, ReplayLeftoverError)) as exc_info,
         ):
-            async with trace_scope(
+            async with replay_scope(
                 replay_session_id="11111111-1111-4111-8111-111111111111",
                 transport=client._transport,
             ):
@@ -687,7 +687,7 @@ class TestReplayMode:
         the real BE ships bare ``"grade-3"``. Without this fix, every real
         replay against the backend would miss on the first call.
         """
-        from noukai_sdk import trace_scope
+        from noukai_sdk import replay_scope
 
         execs = [session_execution(slug="grade-3", result={"matched": True})]
 
@@ -698,7 +698,7 @@ class TestReplayMode:
 
         client = make_client_with_handler(handler)
         with replay_enabled():
-            async with trace_scope(
+            async with replay_scope(
                 replay_session_id="11111111-1111-4111-8111-111111111111",
                 transport=client._transport,
             ):
@@ -709,7 +709,7 @@ class TestReplayMode:
 
     @pytest.mark.asyncio
     async def test_15_extra_code_call_raises_replay_miss(self):
-        from noukai_sdk import trace_scope
+        from noukai_sdk import replay_scope
 
         execs = [session_execution(result={"only": "one"})]
 
@@ -720,7 +720,7 @@ class TestReplayMode:
 
         client = make_client_with_handler(handler)
         with replay_enabled():
-            async with trace_scope(
+            async with replay_scope(
                 replay_session_id="11111111-1111-4111-8111-111111111111",
                 transport=client._transport,
             ):
@@ -731,7 +731,7 @@ class TestReplayMode:
 
     @pytest.mark.asyncio
     async def test_16_unconsumed_executions_raise_leftover(self):
-        from noukai_sdk import trace_scope
+        from noukai_sdk import replay_scope
 
         execs = [
             session_execution(execution_id="a", result={"i": 0}),
@@ -745,7 +745,7 @@ class TestReplayMode:
 
         client = make_client_with_handler(handler)
         with replay_enabled(), pytest.raises(ReplayLeftoverError):
-            async with trace_scope(
+            async with replay_scope(
                 replay_session_id="11111111-1111-4111-8111-111111111111",
                 transport=client._transport,
             ):
@@ -758,7 +758,7 @@ class TestReplayMode:
         """Passing session_id= as an explicit kwarg in replay mode bypasses
         the contextvar lookup for that one call. (Edge case — design § Escape
         hatches.)"""
-        from noukai_sdk import trace_scope
+        from noukai_sdk import replay_scope
 
         execs = [
             session_execution(execution_id="from-contextvar", result={"x": 0}),
@@ -775,7 +775,7 @@ class TestReplayMode:
 
         client = make_client_with_handler(handler)
         with replay_enabled():
-            async with trace_scope(
+            async with replay_scope(
                 replay_session_id="11111111-1111-4111-8111-111111111111",
                 transport=client._transport,
             ):
@@ -800,10 +800,10 @@ class TestProductionSafety:
     async def test_18_replay_header_ignored_when_env_var_unset(self):
         """X-Noukai-Replay is silently ignored without NOUKAI_REPLAY_ENABLED=true.
 
-        Behavior: scope opens in CAPTURE mode (since trace_scope was opened
+        Behavior: scope opens in CAPTURE mode (since replay_scope was opened
         with replay_session_id but the env var is unset). The outbound execute
         proceeds normally, tagged with a *new* capture session_id."""
-        from noukai_sdk import trace_scope
+        from noukai_sdk import replay_scope
 
         captured: dict[str, Any] = {}
 
@@ -814,7 +814,7 @@ class TestProductionSafety:
 
         client = make_client_with_handler(handler)
         with replay_disabled():
-            async with trace_scope(
+            async with replay_scope(
                 replay_session_id="11111111-1111-4111-8111-111111111111"
             ) as scope:
                 await client.flow("acme/spelling/grade-3").execute(message="hi")
@@ -827,7 +827,7 @@ class TestProductionSafety:
 
     @pytest.mark.asyncio
     async def test_19_403_maps_to_replay_forbidden_error(self):
-        from noukai_sdk import trace_scope
+        from noukai_sdk import replay_scope
 
         def handler(request: httpx.Request) -> httpx.Response:
             if "/seq/sessions/" in request.url.path:
@@ -836,7 +836,7 @@ class TestProductionSafety:
 
         client = make_client_with_handler(handler)
         with replay_enabled(), pytest.raises(ReplayForbiddenError):
-            async with trace_scope(
+            async with replay_scope(
                 replay_session_id="11111111-1111-4111-8111-111111111111",
                 transport=client._transport,
             ):
@@ -845,7 +845,7 @@ class TestProductionSafety:
 
     @pytest.mark.asyncio
     async def test_20_410_maps_to_replay_session_expired_error(self):
-        from noukai_sdk import trace_scope
+        from noukai_sdk import replay_scope
 
         def handler(request: httpx.Request) -> httpx.Response:
             if "/seq/sessions/" in request.url.path:
@@ -854,7 +854,7 @@ class TestProductionSafety:
 
         client = make_client_with_handler(handler)
         with replay_enabled(), pytest.raises(ReplaySessionExpiredError):
-            async with trace_scope(
+            async with replay_scope(
                 replay_session_id="11111111-1111-4111-8111-111111111111",
                 transport=client._transport,
             ):
@@ -868,14 +868,14 @@ class TestProductionSafety:
 class TestProductionSafetyExtras:
     @pytest.mark.asyncio
     async def test_404_maps_to_session_not_found(self):
-        from noukai_sdk import trace_scope
+        from noukai_sdk import replay_scope
 
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(404, json={"detail": {"code": "NOT_FOUND", "message": "no"}})
 
         client = make_client_with_handler(handler)
         with replay_enabled(), pytest.raises(ReplaySessionNotFoundError):
-            async with trace_scope(
+            async with replay_scope(
                 replay_session_id="11111111-1111-4111-8111-111111111111",
                 transport=client._transport,
             ):
@@ -884,14 +884,14 @@ class TestProductionSafetyExtras:
 
     @pytest.mark.asyncio
     async def test_400_maps_to_invalid_session(self):
-        from noukai_sdk import trace_scope
+        from noukai_sdk import replay_scope
 
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(400, json={"detail": {"code": "BAD_REQUEST", "message": "no"}})
 
         client = make_client_with_handler(handler)
         with replay_enabled(), pytest.raises(ReplayInvalidSessionError):
-            async with trace_scope(
+            async with replay_scope(
                 replay_session_id="11111111-1111-4111-8111-111111111111",
                 transport=client._transport,
             ):
@@ -900,7 +900,7 @@ class TestProductionSafetyExtras:
 
     @pytest.mark.asyncio
     async def test_snapshots_available_false_raises(self):
-        from noukai_sdk import trace_scope
+        from noukai_sdk import replay_scope
 
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(
@@ -910,7 +910,7 @@ class TestProductionSafetyExtras:
 
         client = make_client_with_handler(handler)
         with replay_enabled(), pytest.raises(ReplayNoSnapshotsError):
-            async with trace_scope(
+            async with replay_scope(
                 replay_session_id="11111111-1111-4111-8111-111111111111",
                 transport=client._transport,
             ):
@@ -932,7 +932,7 @@ class TestEdgeCases:
         import asyncio
         import warnings
 
-        from noukai_sdk import trace_scope
+        from noukai_sdk import replay_scope
 
         execs = [
             session_execution(execution_id="A1", slug="A", result={"x": "A1"}),
@@ -945,7 +945,7 @@ class TestEdgeCases:
         client = make_client_with_handler(handler)
         with replay_enabled(), warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            async with trace_scope(
+            async with replay_scope(
                 replay_session_id="11111111-1111-4111-8111-111111111111",
                 transport=client._transport,
             ):

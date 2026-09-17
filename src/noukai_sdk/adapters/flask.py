@@ -1,9 +1,9 @@
-"""Flask before_request / after_request adapter for the @noukai.trace decorator.
+"""Flask before_request / after_request adapter for the @noukai.replay decorator.
 
 Imports Flask lazily so the SDK does not require Flask as a hard dependency.
 Raises ImportError if Flask is missing.
 
-Flask is synchronous; this adapter uses ``trace_scope_sync``. Async Flask
+Flask is synchronous; this adapter uses ``replay_scope_sync``. Async Flask
 (Quart) users should use the FastAPI / Starlette adapter instead, which works
 for any ASGI app.
 
@@ -57,7 +57,7 @@ def init_noukai_trace(app: Any, *, client: Noukai) -> None:
     Args:
         app: A Flask application instance.
         client: A ``Noukai`` (sync) client. The middleware reads
-            ``client._transport`` to open the trace scope.
+            ``client._transport`` to open the replay scope.
 
     Raises:
         ImportError: if Flask is not installed.
@@ -69,14 +69,14 @@ def init_noukai_trace(app: Any, *, client: Noukai) -> None:
             "init_noukai_trace requires Flask. Install with `pip install flask`."
         ) from exc
 
-    from .._trace_scope import trace_scope_sync
+    from .._replay_scope import replay_scope_sync
 
     @app.before_request  # type: ignore[untyped-decorator]
     def _open_scope() -> Any:
-        """Open a trace scope for this request. Returns an error response on failure."""
+        """Open a replay scope for this request. Returns an error response on failure."""
         replay_sid: str | None = request.headers.get(HEADER_REPLAY)
         try:
-            cm = trace_scope_sync(
+            cm = replay_scope_sync(
                 replay_session_id=replay_sid,
                 transport=client._transport,
             )
@@ -105,7 +105,7 @@ def init_noukai_trace(app: Any, *, client: Noukai) -> None:
 
     @app.teardown_request  # type: ignore[untyped-decorator]
     def _close_scope(exc: BaseException | None) -> None:
-        """Close the trace context manager after the response is committed.
+        """Close the replay context manager after the response is committed.
 
         If ``ReplayLeftoverError`` is raised here (scope exit detects unconsumed
         executions), the response has already been sent so the status code cannot

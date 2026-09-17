@@ -6,6 +6,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-09-16
+
+### Changed
+
+- **BREAKING — the replay/capture scope is renamed `trace*` → `replay*`**
+  (design `20260916-SDK-otel-and-replay-rename`). The scope was misleadingly
+  named `trace`, colliding with the execution-trace API (`run.trace()`) and the
+  `trace=` snapshot-capture param. This is a hard rename — no deprecation alias.
+  - `trace` (decorator) → `replay`
+  - `trace_scope` → `replay_scope`
+  - `trace_scope_sync` → `replay_scope_sync`
+  - internal module `_trace_scope.py` → `_replay_scope.py`
+
+  `current_session_id` is unchanged, and the execution-trace API
+  (`run.trace()` / `.step_trace()` / `.live_trace()`, the `Trace`/`StepTrace`
+  models) and the `execute(..., trace=...)` capture param are untouched.
+
+  **Migration:**
+  ```python
+  # before
+  from noukai_sdk import trace, trace_scope, trace_scope_sync
+  # after
+  from noukai_sdk import replay, replay_scope, replay_scope_sync
+  ```
+  The FastAPI/Flask adapter surface (`NoukaiTraceMiddleware`, `init_noukai_trace`)
+  is intentionally unchanged in this release.
+
+- Version re-synced with `@noukai/sdk` at `0.5.0` (the repos had drifted at
+  Python `0.4.0` / TypeScript `0.4.1`).
+
 ## [0.4.0] — 2026-09-14
 
 ### Added

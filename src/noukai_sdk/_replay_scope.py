@@ -1,13 +1,13 @@
-"""Trace scope: decorator + context manager + accessor.
+"""Replay scope: decorator + context manager + accessor.
 
 The scope establishes which mode the SDK runs in (normal / capture / replay)
 for all `Flow.execute` and `Flow.steps`/`Flow.events` calls made inside it.
 
 Plumbing rules (see design 20260605-SDK-replay-decorator):
 - A ContextVar holds the current ScopeState (or None for normal mode).
-- `@trace` wraps both sync and coroutine functions.
-- `trace_scope()` is an async context manager (the underlying primitive).
-- `trace_scope_sync()` is the sync mirror.
+- `@replay` wraps both sync and coroutine functions.
+- `replay_scope()` is an async context manager (the underlying primitive).
+- `replay_scope_sync()` is the sync mirror.
 - `current_session_id()` reads the ContextVar; returns None outside any scope.
 """
 
@@ -42,7 +42,7 @@ def _replay_env_enabled() -> bool:
 
 
 def current_session_id() -> str | None:
-    """Return the session_id of the current trace scope, or None.
+    """Return the session_id of the current replay scope, or None.
 
     Safe to call anywhere — outside a scope it returns None.
     """
@@ -61,15 +61,15 @@ def _current_scope() -> ScopeState | None:
 
 
 @overload
-def trace(fn: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]: ...
+def replay(fn: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]: ...
 
 
 @overload
-def trace(fn: Callable[..., T]) -> Callable[..., T]: ...
+def replay(fn: Callable[..., T]) -> Callable[..., T]: ...
 
 
-def trace(fn: Callable[..., Any]) -> Callable[..., Any]:
-    """Decorator: open a trace scope for the decorated function.
+def replay(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Decorator: open a replay scope for the decorated function.
 
     Works on both sync and async functions. Inside the wrapped function:
     - If no `X-Noukai-Replay` header is detected → CAPTURE mode (new session_id
@@ -80,25 +80,25 @@ def trace(fn: Callable[..., Any]) -> Callable[..., Any]:
 
     The header is detected by the framework adapter middleware; pure-function
     use (no framework) is always CAPTURE mode unless the explicit context
-    manager forms (`trace_scope` / `trace_scope_sync`) are used with
+    manager forms (`replay_scope` / `replay_scope_sync`) are used with
     `replay_session_id=...`.
 
     The decorator does not inspect the wrapped function's arguments — header
     detection is framework-adapter-driven. Plain-Python users without a
-    framework can call `trace_scope(replay_session_id=...)` directly.
+    framework can call `replay_scope(replay_session_id=...)` directly.
     """
     if inspect.iscoroutinefunction(fn):
 
         @functools.wraps(fn)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-            async with trace_scope():
+            async with replay_scope():
                 return await fn(*args, **kwargs)
 
         return async_wrapper
 
     @functools.wraps(fn)
     def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
-        with trace_scope_sync():
+        with replay_scope_sync():
             return fn(*args, **kwargs)
 
     return sync_wrapper
@@ -110,13 +110,13 @@ def trace(fn: Callable[..., Any]) -> Callable[..., Any]:
 
 
 @asynccontextmanager
-async def trace_scope(
+async def replay_scope(
     *,
     replay_session_id: str | None = None,
     capture: bool = True,
     transport: Any | None = None,
 ) -> AsyncIterator[ScopeState]:
-    """Async context manager establishing a trace scope.
+    """Async context manager establishing a replay scope.
 
     Args:
         replay_session_id: When set AND NOUKAI_REPLAY_ENABLED=true, opens a
@@ -179,13 +179,13 @@ async def trace_scope(
 
 
 @contextmanager
-def trace_scope_sync(
+def replay_scope_sync(
     *,
     replay_session_id: str | None = None,
     capture: bool = True,
     transport: Any | None = None,
 ) -> Iterator[ScopeState]:
-    """Sync mirror of :func:`trace_scope`. Same semantics, blocking I/O for
+    """Sync mirror of :func:`replay_scope`. Same semantics, blocking I/O for
     session fetch in REPLAY mode (uses SyncTransport)."""
     mode: ScopeMode
     sid: str | None
@@ -279,9 +279,9 @@ def _check_leftovers(scope: ScopeState) -> None:
 
 
 __all__ = [
-    "trace",
-    "trace_scope",
-    "trace_scope_sync",
+    "replay",
+    "replay_scope",
+    "replay_scope_sync",
     "current_session_id",
     "_current_scope",
     "_scope_var",

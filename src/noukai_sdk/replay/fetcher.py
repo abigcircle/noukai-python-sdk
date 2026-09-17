@@ -1,7 +1,7 @@
 """Fetches GET /seq/sessions/{session_id} and maps backend errors to typed
 replay errors.
 
-Used at trace_scope entry in REPLAY mode."""
+Used at replay_scope entry in REPLAY mode."""
 
 from __future__ import annotations
 

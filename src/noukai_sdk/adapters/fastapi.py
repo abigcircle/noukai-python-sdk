@@ -1,4 +1,4 @@
-"""FastAPI / Starlette middleware for the @noukai.trace decorator.
+"""FastAPI / Starlette middleware for the @noukai.replay decorator.
 
 Imports Starlette lazily so the SDK does not require Starlette/FastAPI as a
 hard dependency. Raises ImportError if Starlette is missing.
@@ -80,7 +80,7 @@ class NoukaiTraceMiddleware:
                 "Install with `pip install starlette` or `pip install fastapi`."
             ) from exc
 
-        from .._trace_scope import trace_scope
+        from .._replay_scope import replay_scope
 
         request = Request(scope, receive=receive)
         # Header name lookup is case-insensitive in Starlette's Headers.
@@ -103,7 +103,7 @@ class NoukaiTraceMiddleware:
             await send(message)
 
         try:
-            async with trace_scope(
+            async with replay_scope(
                 replay_session_id=replay_sid,
                 transport=self.client._transport,
             ) as scope_state:

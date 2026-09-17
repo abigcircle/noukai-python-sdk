@@ -390,7 +390,7 @@ and an implementation checklist — see [`docs/AGENT_RELAY.md`](docs/AGENT_RELAY
 
 ## Replay and session grouping (experimental)
 
-The `@noukai_sdk.trace` decorator groups every Noukai SDK call made inside your
+The `@noukai_sdk.replay` decorator groups every Noukai SDK call made inside your
 route (or any callable) under one session id. In **capture mode** (always-on
 when the decorator is present) the SDK tags each outbound request with
 `X-Session-Id` so the backend can record a replayable snapshot. In **replay
@@ -406,7 +406,7 @@ from noukai_sdk import AsyncNoukai
 
 noukai = AsyncNoukai(api_key="nk_...", org="acme", project="spelling")
 
-@noukai_sdk.trace
+@noukai_sdk.replay
 async def handle(message: str) -> dict:
     result = await noukai.flow("grade-3").execute(message=message)
     return {"output": result.result, "session_id": result.session_id}
@@ -426,7 +426,7 @@ app = FastAPI()
 app.add_middleware(NoukaiTraceMiddleware, client=noukai)
 
 @app.post("/grade")
-@noukai_sdk.trace
+@noukai_sdk.replay
 async def grade(req: Request) -> dict:
     body = await req.json()
     result = await noukai.flow("grade-3").execute(message=body["text"])
@@ -453,7 +453,7 @@ editing your handler.
 **End-to-end flow:**
 
 1. **Capture the session id during normal traffic.** Capture runs automatically
-   whenever a request enters a `@trace`-wrapped route. The FastAPI/Flask
+   whenever a request enters a `@replay`-wrapped route. The FastAPI/Flask
    adapter sets `X-Noukai-Session: <session_id>` on the response — log it or
    surface it through your error reporter so you have the handle to replay
    later.
@@ -491,22 +491,22 @@ iterating on post-processing logic.
 > notebooks where there is no inbound request to carry the header, open the
 > scope programmatically:
 > ```python
-> from noukai_sdk import trace_scope
+> from noukai_sdk import replay_scope
 >
-> async with trace_scope(
+> async with replay_scope(
 >     transport=noukai._transport,
 >     replay_session_id="abc-123-def",
 > ):
 >     await noukai.flow("grade-3").execute(message="any input")
 > ```
-> Use `trace_scope_sync` for sync code. The same `NOUKAI_REPLAY_ENABLED` gate
+> Use `replay_scope_sync` for sync code. The same `NOUKAI_REPLAY_ENABLED` gate
 > applies.
 
 ### Capture vs replay
 
 | Feature | Capture mode | Replay mode |
 |---|---|---|
-| Trigger | `@trace` decorator present | `NOUKAI_REPLAY_ENABLED=true` + `X-Noukai-Replay` header |
+| Trigger | `@replay` decorator present | `NOUKAI_REPLAY_ENABLED=true` + `X-Noukai-Replay` header |
 | LLM calls | Live | None (served from cassette) |
 | `X-Session-Id` outbound | Yes (set by SDK) | Yes (same header, replay session id) |
 | `X-Noukai-Session` response | Yes (set by adapter) | Yes (same header) |
@@ -532,7 +532,7 @@ Replay is gated behind `NOUKAI_REPLAY_ENABLED=true`. Without this env var an
 `X-Noukai-Replay` header in production is silently ignored; the scope opens in
 capture mode as normal. This means:
 
-- Deploying the `@trace` decorator to production is safe.
+- Deploying the `@replay` decorator to production is safe.
 - Replay cannot be enabled by a client-supplied header alone.
 
 ### Errors

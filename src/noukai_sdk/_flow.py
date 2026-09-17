@@ -13,6 +13,7 @@ from ._models.events import StepCompleted, StreamEvent
 from ._models.requests import ChatMessage, ExecuteRequest
 from ._models.responses import ExecuteResult, JobAccepted, PausedResult
 from ._paths import flow_base, flow_execute_path, flow_jobs_submit_path
+from ._replay_scope import _current_scope
 from ._run import AsyncRun, Run
 from ._step_iterator import (
     make_events_iterator,
@@ -30,7 +31,6 @@ from ._tool_calls import (
     check_messages_payload_size,
     validate_fresh_call,
 )
-from ._trace_scope import _current_scope
 from .replay._state import ScopeMode
 
 if TYPE_CHECKING:
@@ -140,7 +140,7 @@ class Flow:
 
         1. per-call ``session_id`` kwarg
         2. transport ``_default_session_id`` (set on the client at construction)
-        3. surrounding ``trace_scope`` contextvar
+        3. surrounding ``replay_scope`` contextvar
 
         Uses ``is not None`` chains so an explicit empty-string ``session_id``
         is not silently overridden by the next tier.
@@ -205,7 +205,7 @@ class Flow:
                 raises ``NotImplementedError`` when passed.
             timeout: Per-request timeout override (seconds).
             session_id: Explicit session id override. Precedence (highest first):
-                this kwarg > client-level default > active trace_scope contextvar
+                this kwarg > client-level default > active replay_scope contextvar
                 > None. Silently ignored in Phase 2; wired in Phase 5 (capture)
                 and Phase 6 (replay).
 
@@ -628,7 +628,7 @@ class AsyncFlow:
 
         1. per-call ``session_id`` kwarg
         2. transport ``_default_session_id`` (set on the client at construction)
-        3. surrounding ``trace_scope`` contextvar
+        3. surrounding ``replay_scope`` contextvar
 
         Uses ``is not None`` chains so an explicit empty-string ``session_id``
         is not silently overridden by the next tier.

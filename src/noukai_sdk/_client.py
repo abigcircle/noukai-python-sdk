@@ -189,7 +189,7 @@ class Noukai:
             ``"org/project/slug"`` string or kwargs still override.
         project: Default project. Required when ``org`` is set.
         session_id: Client-level default session id. Lowest-priority in the
-            precedence chain: kwarg > client default > trace_scope contextvar
+            precedence chain: kwarg > client default > replay_scope contextvar
             > None. Propagated to all ``Flow`` proxies returned by
             ``flow(...)``. Wired to header injection in Phase 5 (capture) and
             Phase 6 (replay).
@@ -302,7 +302,7 @@ class AsyncNoukai:
             ``"org/project/slug"`` string or kwargs still override.
         project: Default project. Required when ``org`` is set.
         session_id: Client-level default session id. Lowest-priority in the
-            precedence chain: kwarg > client default > trace_scope contextvar
+            precedence chain: kwarg > client default > replay_scope contextvar
             > None. Propagated to all ``AsyncFlow`` proxies returned by
             ``flow(...)``. Wired to header injection in Phase 5 (capture) and
             Phase 6 (replay).

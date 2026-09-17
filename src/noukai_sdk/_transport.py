@@ -49,7 +49,7 @@ __all__ = ["AsyncTransport", "SyncTransport", "Response"]
 # request-id provenance -- :func:`_apply_extra_headers` strips them instead.
 # The replay subsystem is the main caller of ``extra_headers`` (for
 # ``X-Session-Id`` / ``X-Noukai-Replay``); a hardened allowlist here means a
-# misconfigured ``trace_scope`` cannot rotate the bearer token by accident.
+# misconfigured ``replay_scope`` cannot rotate the bearer token by accident.
 #
 # Compared case-insensitively.
 _RESERVED_HEADERS_LOWER = frozenset(
