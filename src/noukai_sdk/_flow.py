@@ -3,9 +3,10 @@ and trace operations on one specific flow."""
 
 from __future__ import annotations
 
+import functools
 import inspect
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, TypeVar, cast
 
 from ._constants import DEFAULT_MAX_TOOL_ROUNDS, HEADER_SESSION_ID
 from ._jobs import AsyncJob, Job
@@ -49,6 +50,57 @@ ToolChoice = Literal["auto", "none", "required"] | dict[str, Any]
 
 # Flow version selector
 VersionSpec = str | int  # "draft" | "production" | <int>
+
+_FlowMethod = TypeVar("_FlowMethod", bound=Callable[..., Any])
+
+
+def _span_execute_sync(op: str) -> Callable[[_FlowMethod], _FlowMethod]:
+    """Wrap a sync ``execute``-family method in the opt-in OTel CLIENT span.
+
+    A true no-op when the client was built without ``otel=True`` (the span
+    factory yields a null handle). ``execution_id``/``status`` are read off the
+    return value, so every return path (replay, paused, auto-resumed, normal)
+    is covered without touching the method body. Errors are recorded by the
+    span factory and re-raised. See design 20260916-SDK-otel-and-replay-rename.
+    """
+
+    def deco(fn: _FlowMethod) -> _FlowMethod:
+        @functools.wraps(fn)
+        def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
+            factory = self._transport._span_factory
+            version = kwargs.get("version", "draft")
+            with factory.flow_span(
+                op, org=self._org, project=self._project, slug=self._slug, version=str(version)
+            ) as span:
+                result = fn(self, *args, **kwargs)
+                span.set_execution_id(getattr(result, "execution_id", None))
+                span.set_status(getattr(result, "status", None))
+                return result
+
+        return cast(_FlowMethod, wrapper)
+
+    return deco
+
+
+def _span_execute_async(op: str) -> Callable[[_FlowMethod], _FlowMethod]:
+    """Async mirror of :func:`_span_execute_sync`."""
+
+    def deco(fn: _FlowMethod) -> _FlowMethod:
+        @functools.wraps(fn)
+        async def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
+            factory = self._transport._span_factory
+            version = kwargs.get("version", "draft")
+            with factory.flow_span(
+                op, org=self._org, project=self._project, slug=self._slug, version=str(version)
+            ) as span:
+                result = await fn(self, *args, **kwargs)
+                span.set_execution_id(getattr(result, "execution_id", None))
+                span.set_status(getattr(result, "status", None))
+                return result
+
+        return cast(_FlowMethod, wrapper)
+
+    return deco
 
 
 class Flow:
@@ -153,6 +205,7 @@ class Flow:
             return scope.session_id
         return None
 
+    @_span_execute_sync("execute")
     def execute(
         self,
         message: str | None = None,
@@ -307,6 +360,7 @@ class Flow:
         result._session_id = effective_sid
         return result
 
+    @_span_execute_sync("execute_async")
     def execute_async(
         self,
         message: str | None = None,
@@ -641,6 +695,7 @@ class AsyncFlow:
             return scope.session_id
         return None
 
+    @_span_execute_async("execute")
     async def execute(
         self,
         message: str | None = None,
@@ -769,6 +824,7 @@ class AsyncFlow:
         result._session_id = effective_sid
         return result
 
+    @_span_execute_async("execute_async")
     async def execute_async(
         self,
         message: str | None = None,

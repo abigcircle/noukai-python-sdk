@@ -25,6 +25,7 @@ from ._constants import (
     HEADER_USER_AGENT,
 )
 from ._errors import APIConnectionError, APITimeoutError
+from ._otel import NoopSpanFactory, SpanFactory
 from ._transport_shared import (
     _RETRYABLE_STATUS,
     Response,
@@ -94,6 +95,7 @@ class AsyncTransport:
         log_handler: Callable[[dict[str, Any]], None] | None = None,
         log_payloads: bool = False,
         default_session_id: str | None = None,
+        span_factory: SpanFactory | None = None,
     ) -> None:
         self._api_key = api_key
         self._base_url = base_url.rstrip("/") + "/"
@@ -102,6 +104,8 @@ class AsyncTransport:
         self._log_handler = log_handler
         self._log_payloads = log_payloads
         self._default_session_id = default_session_id
+        # OTel: no-op factory unless the client opted in with otel=True.
+        self._span_factory: SpanFactory = span_factory or NoopSpanFactory()
         # Phase 3 lesson: store headers separately and pass explicitly on every
         # request so that swapping _httpx_client in tests does not lose them.
         self._headers = _default_headers(api_key)
@@ -359,6 +363,7 @@ class SyncTransport:
         log_handler: Callable[[dict[str, Any]], None] | None = None,
         log_payloads: bool = False,
         default_session_id: str | None = None,
+        span_factory: SpanFactory | None = None,
     ) -> None:
         self._api_key = api_key
         self._base_url = base_url.rstrip("/") + "/"
@@ -367,6 +372,8 @@ class SyncTransport:
         self._log_handler = log_handler
         self._log_payloads = log_payloads
         self._default_session_id = default_session_id
+        # OTel: no-op factory unless the client opted in with otel=True.
+        self._span_factory: SpanFactory = span_factory or NoopSpanFactory()
         # Store headers separately (Phase 3 lesson) — passed explicitly on
         # every request so swapping _httpx_client in tests doesn't lose them.
         self._headers = _default_headers(api_key)

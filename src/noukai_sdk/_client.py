@@ -23,6 +23,7 @@ from ._constants import (
 )
 from ._errors import AuthenticationError
 from ._flow import AsyncFlow, Flow
+from ._otel import get_flow_tracer
 from ._transport import AsyncTransport, SyncTransport
 
 NoukaiEnv = Literal["dev", "production"]
@@ -132,6 +133,8 @@ def _build_sync_transport(
     log_handler: Callable[[dict[str, Any]], None] | None,
     log_payloads: bool,
     session_id: str | None = None,
+    otel: bool = False,
+    tracer: Any | None = None,
 ) -> SyncTransport:
     """Resolve env vars, validate key, and construct SyncTransport."""
     resolved_key, resolved_url = _resolve_credentials(api_key, env)
@@ -143,6 +146,7 @@ def _build_sync_transport(
         log_handler=log_handler,
         log_payloads=log_payloads,
         default_session_id=session_id,
+        span_factory=get_flow_tracer(otel, tracer),
     )
 
 
@@ -154,6 +158,8 @@ def _build_async_transport(
     log_handler: Callable[[dict[str, Any]], None] | None,
     log_payloads: bool,
     session_id: str | None = None,
+    otel: bool = False,
+    tracer: Any | None = None,
 ) -> AsyncTransport:
     """Resolve env vars, validate key, and construct AsyncTransport."""
     resolved_key, resolved_url = _resolve_credentials(api_key, env)
@@ -165,6 +171,7 @@ def _build_async_transport(
         log_handler=log_handler,
         log_payloads=log_payloads,
         default_session_id=session_id,
+        span_factory=get_flow_tracer(otel, tracer),
     )
 
 
@@ -199,6 +206,13 @@ class Noukai:
             events. Payloads omitted unless ``log_payloads=True``.
         log_payloads: When True, request/response bodies are passed to
             ``log_handler``. Default False — protects credentials and PII.
+        otel: When True, emit an opt-in OpenTelemetry CLIENT span per
+            ``flow.execute`` / ``flow.execute_async`` call into your configured
+            OpenTelemetry provider. Requires the ``[otel]`` extra
+            (``pip install noukai-sdk[otel]``). Default False — a true no-op
+            that never imports ``opentelemetry``.
+        tracer: Optional explicit OpenTelemetry ``Tracer`` to use instead of
+            the globally configured provider. Only consulted when ``otel=True``.
 
     Example:
         >>> with Noukai(org="acme", project="spelling") as client:
@@ -217,13 +231,15 @@ class Noukai:
         max_retries: int | None = None,
         log_handler: Callable[[dict[str, Any]], None] | None = None,
         log_payloads: bool = False,
+        otel: bool = False,  # NEW — design 20260916-SDK-otel-and-replay-rename
+        tracer: object | None = None,
     ) -> None:
         _validate_org_project(org, project)
         self.default_org = org
         self.default_project = project
         self._default_session_id = session_id
         self._transport = _build_sync_transport(
-            api_key, env, timeout, max_retries, log_handler, log_payloads, session_id
+            api_key, env, timeout, max_retries, log_handler, log_payloads, session_id, otel, tracer
         )
 
     def flow(
@@ -312,6 +328,13 @@ class AsyncNoukai:
             events. Payloads omitted unless ``log_payloads=True``.
         log_payloads: When True, request/response bodies are passed to
             ``log_handler``. Default False — protects credentials and PII.
+        otel: When True, emit an opt-in OpenTelemetry CLIENT span per
+            ``flow.execute`` / ``flow.execute_async`` call into your configured
+            OpenTelemetry provider. Requires the ``[otel]`` extra
+            (``pip install noukai-sdk[otel]``). Default False — a true no-op
+            that never imports ``opentelemetry``.
+        tracer: Optional explicit OpenTelemetry ``Tracer`` to use instead of
+            the globally configured provider. Only consulted when ``otel=True``.
 
     Example:
         >>> async with AsyncNoukai(org="acme", project="spelling") as client:
@@ -330,13 +353,15 @@ class AsyncNoukai:
         max_retries: int | None = None,
         log_handler: Callable[[dict[str, Any]], None] | None = None,
         log_payloads: bool = False,
+        otel: bool = False,  # NEW — design 20260916-SDK-otel-and-replay-rename
+        tracer: object | None = None,
     ) -> None:
         _validate_org_project(org, project)
         self.default_org = org
         self.default_project = project
         self._default_session_id = session_id
         self._transport = _build_async_transport(
-            api_key, env, timeout, max_retries, log_handler, log_payloads, session_id
+            api_key, env, timeout, max_retries, log_handler, log_payloads, session_id, otel, tracer
         )
 
     def flow(
