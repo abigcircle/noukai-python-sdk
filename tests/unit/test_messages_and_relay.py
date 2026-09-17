@@ -176,9 +176,7 @@ def test_relay_flow_sync_paused_then_manual_resume() -> None:
 
     paused = _sync_relay(handler).execute(message="hi", tools=[])
     assert isinstance(paused, PausedResult)
-    final = paused.resume_sync(
-        tool_results=[{"role": "tool", "toolCallId": "tc1", "content": "r"}]
-    )
+    final = paused.resume_sync(tool_results=[{"role": "tool", "toolCallId": "tc1", "content": "r"}])
     assert isinstance(final, ExecuteResult)
     assert calls["n"] == 2
 
