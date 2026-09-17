@@ -55,7 +55,7 @@ mount_flow_relay(
     path="/agent/execute",
     authorize=require_maker,
     max_body_bytes=262_144,  # 256 KiB — checked on raw bytes before parse
-    max_messages=40,         # caps messages[] / toolCallMessages[] length
+    max_messages=40,  # caps messages[] / toolCallMessages[] length
 )
 
 

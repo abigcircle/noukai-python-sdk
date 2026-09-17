@@ -165,9 +165,7 @@ class TestSyncToolHandler:
             return httpx.Response(200, json=responses.pop(0))
 
         def tool_handler(tool_calls):
-            return [
-                {"role": "tool", "toolCallId": tc["id"], "content": "ok"} for tc in tool_calls
-            ]
+            return [{"role": "tool", "toolCallId": tc["id"], "content": "ok"} for tc in tool_calls]
 
         with make_client(handler) as client:
             result = client.flow("a/b/c").execute(

@@ -169,9 +169,7 @@ class TestAutoResume:
 
         def tool_handler(tool_calls):
             handler_calls.append(tool_calls)
-            return [
-                {"role": "tool", "toolCallId": tc["id"], "content": "ok"} for tc in tool_calls
-            ]
+            return [{"role": "tool", "toolCallId": tc["id"], "content": "ok"} for tc in tool_calls]
 
         client = make_client(http_handler)
         result = await client.flow("a/b/c").execute(
@@ -199,9 +197,7 @@ class TestAutoResume:
 
         def tool_handler(tool_calls):
             handler_calls.append(tool_calls)
-            return [
-                {"role": "tool", "toolCallId": tc["id"], "content": "ok"} for tc in tool_calls
-            ]
+            return [{"role": "tool", "toolCallId": tc["id"], "content": "ok"} for tc in tool_calls]
 
         client = make_client(http_handler)
         result = await client.flow("a/b/c").execute(
@@ -221,9 +217,7 @@ class TestAutoResume:
             return httpx.Response(200, json=responses.pop(0))
 
         async def async_tool_handler(tool_calls):
-            return [
-                {"role": "tool", "toolCallId": tc["id"], "content": "ok"} for tc in tool_calls
-            ]
+            return [{"role": "tool", "toolCallId": tc["id"], "content": "ok"} for tc in tool_calls]
 
         client = make_client(http_handler)
         result = await client.flow("a/b/c").execute(
@@ -241,9 +235,7 @@ class TestAutoResume:
             return httpx.Response(200, json=paused_payload())
 
         def tool_handler(tool_calls):
-            return [
-                {"role": "tool", "toolCallId": tc["id"], "content": "ok"} for tc in tool_calls
-            ]
+            return [{"role": "tool", "toolCallId": tc["id"], "content": "ok"} for tc in tool_calls]
 
         client = make_client(http_handler)
         with pytest.raises(ToolCallLimitError):
