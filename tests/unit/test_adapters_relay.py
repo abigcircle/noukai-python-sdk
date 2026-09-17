@@ -373,3 +373,68 @@ def test_flask_connection_error_returns_502() -> None:
 
     assert resp.status_code == 502
     assert resp.get_json() == {"detail": "UPSTREAM_UNAVAILABLE"}
+
+
+# ---------------------------------------------------------------------------
+# W3C trace-context forwarding (design 20260917-SDK-agent-otel, PR-2)
+# ---------------------------------------------------------------------------
+
+_TRACEPARENT = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+
+
+def test_fastapi_forwards_traceparent_and_tracestate() -> None:
+    from starlette.testclient import TestClient
+
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["traceparent"] = request.headers.get("traceparent")
+        captured["tracestate"] = request.headers.get("tracestate")
+        captured["auth"] = request.headers.get("authorization")
+        return httpx.Response(200, json=COMPLETED_BODY)
+
+    app = _make_fastapi_app(handler)
+    with TestClient(app) as tc:
+        tc.post(
+            "/agent/execute",
+            json={"message": "hi"},
+            headers={"traceparent": _TRACEPARENT, "tracestate": "vendor=abc"},
+        )
+
+    assert captured["traceparent"] == _TRACEPARENT
+    assert captured["tracestate"] == "vendor=abc"
+    # Bearer stays transport-managed (not overwritten by the extra headers).
+    assert captured["auth"] == "Bearer nk_test"
+
+
+def test_fastapi_no_traceparent_forwarded_when_absent() -> None:
+    from starlette.testclient import TestClient
+
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["traceparent"] = request.headers.get("traceparent")
+        return httpx.Response(200, json=COMPLETED_BODY)
+
+    app = _make_fastapi_app(handler)
+    with TestClient(app) as tc:
+        tc.post("/agent/execute", json={"message": "hi"})
+
+    assert captured["traceparent"] is None
+
+
+def test_flask_forwards_traceparent() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["traceparent"] = request.headers.get("traceparent")
+        return httpx.Response(200, json=COMPLETED_BODY)
+
+    app = _make_flask_app(handler)
+    app.test_client().post(
+        "/agent/execute",
+        json={"message": "hi"},
+        headers={"traceparent": _TRACEPARENT},
+    )
+
+    assert captured["traceparent"] == _TRACEPARENT

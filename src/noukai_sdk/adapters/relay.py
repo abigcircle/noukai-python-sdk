@@ -65,6 +65,29 @@ DEFAULT_RELAY_PATH = "/agent/execute"
 DEFAULT_MAX_BODY_BYTES = 262_144  # 256 KiB
 DEFAULT_MAX_MESSAGES = 40
 
+# W3C trace-context headers a relay forwards so a browser-initiated distributed
+# trace continues onto the relay->Noukai hop (design 20260917-SDK-agent-otel). The
+# browser agent SDK (``@noukai/agent``, ``otel: true``) injects ``traceparent`` on
+# its POST; forwarding it here lets the customer's trace span
+# browser -> relay -> Noukai ingress in one tree. These are the ONLY inbound
+# headers a relay forwards; everything else about the request stays opaque.
+TRACE_CONTEXT_HEADERS = ("traceparent", "tracestate")
+
+
+def _extract_trace_headers(get_header: Callable[[str], str | None]) -> dict[str, str]:
+    """Pull the W3C trace-context headers via a case-insensitive ``get_header``.
+
+    Returns only those present and non-empty. ``traceparent``/``tracestate`` are
+    not reserved headers, so they pass ``_apply_extra_headers``; the bearer,
+    version, and request-id remain transport-managed.
+    """
+    out: dict[str, str] = {}
+    for name in TRACE_CONTEXT_HEADERS:
+        value = get_header(name)
+        if value:
+            out[name] = value
+    return out
+
 
 @dataclass(frozen=True)
 class RelayBounds:
@@ -272,10 +295,18 @@ def mount_flow_relay(
         # App authorization stays in the app: raise to reject; propagate.
         await authorize(request)
 
+        # Forward the browser's W3C trace context so an OTel-instrumented caller's
+        # trace continues to Noukai. Starlette ``Headers.get`` is case-insensitive.
+        trace_headers = _extract_trace_headers(request.headers.get)
+
         url = flow_execute_path(org, project, slug, seg)
         try:
             resp = await client._transport.request(
-                "POST", url, json=payload, raise_for_status=False
+                "POST",
+                url,
+                json=payload,
+                raise_for_status=False,
+                extra_headers=trace_headers or None,
             )
         except APIConnectionError:
             # No upstream status to relay (connection/timeout) — signal 502.
@@ -350,9 +381,19 @@ def flow_relay_blueprint(
         # App authorization stays in the app: raise to reject; propagate.
         authorize(request)
 
+        # Forward the browser's W3C trace context so an OTel-instrumented caller's
+        # trace continues to Noukai. Werkzeug ``Headers.get`` is case-insensitive.
+        trace_headers = _extract_trace_headers(request.headers.get)
+
         url = flow_execute_path(org, project, slug, seg)
         try:
-            resp = client._transport.request("POST", url, json=payload, raise_for_status=False)
+            resp = client._transport.request(
+                "POST",
+                url,
+                json=payload,
+                raise_for_status=False,
+                extra_headers=trace_headers or None,
+            )
         except APIConnectionError:
             return jsonify({"detail": "UPSTREAM_UNAVAILABLE"}), 502
         status, body = _normalize_upstream(resp.status_code, resp.body)

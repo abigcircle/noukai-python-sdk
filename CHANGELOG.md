@@ -6,6 +6,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.2] — 2026-09-17
+
+### Added
+
+- **Relay forwards W3C trace context to Noukai (design `20260917-SDK-agent-otel`,
+  PR-2).** `mount_flow_relay` (FastAPI/Starlette) and `flow_relay_blueprint`
+  (Flask) now extract the incoming ``traceparent`` / ``tracestate`` headers and
+  forward them on the ``/execute`` call, so a browser-initiated OpenTelemetry
+  trace (from ``@noukai/agent`` with ``otel: true``) continues
+  **browser → relay → Noukai ingress** as one trace instead of stopping at the
+  relay. Only those two headers are forwarded; the bearer, version, and
+  request-id stay transport-managed. No effect on a request without trace
+  headers. New internal helper ``_extract_trace_headers`` in ``adapters/relay.py``
+  (mirrors TS ``extractTraceHeaders``).
+
 ## [0.5.1] — 2026-09-17
 
 ### Changed
